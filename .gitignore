@@ -1,0 +1,30 @@
+# macOS
+.DS_Store
+._*
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# editors
+.vscode/
+.idea/
+*.swp
+
+# node tooling
+node_modules/
+npm-debug.log*
+
+# sandbox / tool caches (never commit these)
+.cache/
+.npm/
+.local/
+.sudo_as_admin_successful
+
+# original student uploads — keep them out of the public repo
+uploads/
+
+*.log
+
+# distributable
+reading-room.zip

@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Reading Room · Library Management</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..800;1,9..144,300..800&family=Inter:wght@400;500;600;700&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+<meta name="description" content="The Reading Room · a vintage card-catalogue library management system for books, borrowers and due dates.">
+<meta name="theme-color" content="#1d3b2f">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231d3b2f'/%3E%3Cpath d='M10 24V12.5a2 2 0 0 1 2-2h1.5v13.5M18.5 24V10.5H20a2 2 0 0 1 2 2V24M8.5 24h15' fill='none' stroke='%23d9a95b' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<a class="skip-link" href="#main">Skip to catalogue</a>
+
+<!-- ============ HEADER ============ -->
+<header class="masthead">
+  <div class="masthead-rule"></div>
+  <div class="masthead-inner">
+    <div class="brand">
+      <svg class="crest" viewBox="0 0 48 48" aria-hidden="true">
+        <circle cx="24" cy="24" r="22.5" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <circle cx="24" cy="24" r="18" fill="none" stroke="currentColor" stroke-width=".6" opacity=".6"/>
+        <path d="M15.5 33.5V18.5c0-1.4 1-2.5 2.5-2.5h3c1.4 0 2.5 1.1 2.5 2.5v15M24 33.5v-13c0-1.4 1.1-2.5 2.5-2.5h3c1.4 0 2.5 1.1 2.5 2.5v13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M13.5 33.5h21" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M24 16v-3.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        <circle cx="24" cy="10.8" r="1.5" fill="currentColor"/>
+      </svg>
+      <div class="brand-text">
+        <p class="brand-over">Est. 1897 &nbsp;·&nbsp; The Reading Room</p>
+        <h1>Library&nbsp;Ledger</h1>
+        <p class="brand-sub">A card catalogue for books, borrowers &amp; due dates</p>
+      </div>
+    </div>
+
+    <div class="masthead-side">
+      <div class="clock">
+        <p class="clock-day" id="clockDay">—</p>
+        <p class="clock-date" id="clockDate">—</p>
+      </div>
+      <button class="palette-btn" id="paletteBtn" type="button" aria-label="Open quick search">
+        <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span>Quick search</span>
+        <kbd>Ctrl K</kbd>
+      </button>
+    </div>
+  </div>
+  <div class="masthead-rule double"></div>
+</header>
+
+<!-- ============ NAV ============ -->
+<nav class="tabs" aria-label="Sections">
+  <div class="tabs-inner" aria-label="Sections">
+    <button class="tab active" data-section="dashboard" aria-current="true">
+      <span class="tab-ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg>
+      </span>Dashboard</button>
+    <button class="tab" data-section="addBook" aria-current="false">
+      <span class="tab-ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></svg>
+      </span>Add Book</button>
+    <button class="tab" data-section="books" aria-current="false">
+      <span class="tab-ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10v16H5.5A1.5 1.5 0 0 1 4 18.5zM10 20h8.5A1.5 1.5 0 0 0 20 18.5v-13A1.5 1.5 0 0 0 18.5 4H10"/></svg>
+      </span>Inventory</button>
+    <button class="tab" data-section="search" aria-current="false">
+      <span class="tab-ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>
+      </span>Search</button>
+    <button class="tab" data-section="issue" aria-current="false">
+      <span class="tab-ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M4 7h13M13 3.5 17 7l-4 3.5"/><path d="M20 17H7M11 13.5 7 17l4 3.5"/></svg>
+      </span>Issue</button>
+    <button class="tab" data-section="return" aria-current="false">
+      <span class="tab-ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M20 7H7M11 3.5 7 7l4 3.5"/><path d="M4 17h13M13 13.5 17 17l-4 3.5"/></svg>
+      </span>Return</button>
+    <button class="tab" data-section="issued" aria-current="false">
+      <span class="tab-ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M6 3.5h9l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1Z"/><path d="M14.5 3.7V9h5.2"/><path d="M8.5 13h7M8.5 16.5h5"/></svg>
+      </span>On Loan <span class="tab-count" id="loanCount">0</span></button>
+  </div>
+</nav>
+
+<main id="main">
+  <div class="contents" aria-hidden="true">
+    <span class="contents-label">Contents</span>
+    <span class="contents-current" id="contentsCurrent">Dashboard</span>
+    <span class="contents-dots"></span>
+    <span class="contents-vol">Vol. I</span>
+  </div>
+
+  <!-- ============ DASHBOARD ============ -->
+  <section id="dashboard" class="section active">
+    <div class="board-head">
+      <div>
+        <p class="eyebrow">Reader's board</p>
+        <h2>The state of the shelves</h2>
+      </div>
+      <p class="board-note">Every stat below is stamped live from this browser's ledger.</p>
+    </div>
+
+    <div class="stats">
+      <article class="stat">
+        <p class="stat-label">Titles catalogued</p>
+        <p class="stat-value" id="totalTitles">0</p>
+        <p class="stat-foot">distinct books on record</p>
+      </article>
+      <article class="stat">
+        <p class="stat-label">Copies on shelf</p>
+        <p class="stat-value" id="availableCopies">0</p>
+        <p class="stat-foot">ready to be borrowed</p>
+      </article>
+      <article class="stat">
+        <p class="stat-label">Loans out</p>
+        <p class="stat-value" id="activeIssues">0</p>
+        <p class="stat-foot">in readers' hands</p>
+      </article>
+      <article class="stat stat-returned">
+        <p class="stat-label">Returns logged</p>
+        <p class="stat-value" id="returnedCount">0</p>
+        <p class="stat-foot">all-time, this browser</p>
+      </article>
+    </div>
+
+    <div class="board">
+      <div class="lamp"></div>
+      <div class="shelf-wrap">
+        <div class="shelf-head">
+          <div>
+            <h3 class="shelf-title">The shelf</h3>
+            <p class="shelf-sub">Each spine is one title. Thickness = copies owned. Click a spine to open its card.</p>
+          </div>
+          <div class="shelf-legend" aria-hidden="true">
+            <span><i class="dot dot-avail"></i>On shelf</span>
+            <span><i class="dot dot-out"></i>All out</span>
+          </div>
+        </div>
+
+        <div class="shelf" id="shelf">
+          <div class="shelf-empty" id="shelfEmpty">
+            <p>The shelf is bare.</p>
+            <p>Add your first book and it will appear here, spine and all.</p>
+          </div>
+        </div>
+        <div class="shelf-board" aria-hidden="true"></div>
+        <div class="shelf-rail" aria-hidden="true"></div>
+      </div>
+
+      <aside class="slip-wrap">
+        <div class="slip" id="slip">
+          <p class="slip-eyebrow">Borrower's slip</p>
+          <p class="slip-empty" id="slipEmpty">Select a spine from the shelf to pull up its due-date slip.</p>
+          <div class="slip-body" id="slipBody" hidden>
+            <p class="slip-code" id="slipCode">—</p>
+            <h4 class="slip-title" id="slipTitle">—</h4>
+            <p class="slip-author" id="slipAuthor">—</p>
+            <dl class="slip-meta">
+              <div><dt>Published</dt><dd id="slipYear">—</dd></div>
+              <div><dt>On shelf</dt><dd id="slipCopies">—</dd></div>
+              <div><dt>Status</dt><dd id="slipStatus">—</dd></div>
+            </dl>
+            <div class="slip-loans">
+              <p class="slip-loans-head">Recent activity</p>
+              <ul class="slip-loans-list" id="slipLoans"></ul>
+            </div>
+            <button class="slip-return" id="slipReturn" type="button">Log a return</button>
+          </div>
+          <div class="slip-perforation" aria-hidden="true"></div>
+          <p class="slip-stub" aria-hidden="true">THE READING ROOM · KEEP THIS STUB</p>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============ ADD BOOK ============ -->
+  <section id="addBook" class="section">
+    <div class="board-head">
+      <div>
+        <p class="eyebrow">Accession desk</p>
+        <h2>Catalogue a new book</h2>
+      </div>
+      <p class="board-note">IDs are uppercase. Titles and authors may be anything — they're escaped on the way in.</p>
+    </div>
+
+    <div class="desk">
+      <form id="addBookForm" class="card-form" novalidate>
+        <div class="field-row">
+          <div class="field">
+            <label for="bookId">Accession code <span>e.g. BK-204</span></label>
+            <input id="bookId" name="bookId" autocomplete="off" required>
+          </div>
+          <div class="field">
+            <label for="year">Publication year <span>1 – 2026</span></label>
+            <input type="number" id="year" name="year" min="1" max="2026" required>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="title">Title</label>
+          <input id="title" name="title" autocomplete="off" required>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="author">Author</label>
+            <input id="author" name="author" autocomplete="off" required>
+          </div>
+          <div class="field">
+            <label for="copies">Copies owned <span>0 – 10,000</span></label>
+            <input type="number" id="copies" name="copies" min="0" max="10000" required>
+          </div>
+        </div>
+
+        <div class="form-foot">
+          <button type="submit" class="btn-primary">
+            <span>Stamp into the ledger</span>
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M5 12.5 10 17.5 19 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <p class="form-hint">Fields are validated on submit — duplicates are refused politely.</p>
+        </div>
+      </form>
+
+      <aside class="desk-preview" aria-hidden="true">
+        <p class="eyebrow">Preview · the bound copy</p>
+        <div class="book-stage">
+          <div class="hardbook" id="pvBook" data-binding="forest">
+            <span class="hb-pages"></span>
+            <span class="hb-cover">
+              <span class="hb-grain"></span>
+              <span class="hb-frame"></span>
+              <span class="hb-spine-hinge"></span>
+              <span class="hb-headband top"></span>
+              <span class="hb-headband bottom"></span>
+              <span class="hb-title" id="pvTitle">Your title appears here</span>
+              <span class="hb-rule"></span>
+              <span class="hb-author" id="pvAuthor">Author's name</span>
+              <span class="hb-foot"><span id="pvCode">BK-000</span> · <span id="pvYear">Year</span></span>
+              <span class="hb-stamp" id="pvStamp">SPECIMEN</span>
+            </span>
+          </div>
+          <div class="stage-shadow"></div>
+        </div>
+        <div class="catalogue-card" id="previewCard" hidden>
+          <p class="cat-foot"><span id="pvCopies">0 copies</span> · <span id="pvToday">—</span></p>
+        </div>
+        <p class="desk-tip">The cover is bound the moment you stamp it into the ledger.</p>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============ INVENTORY ============ -->
+  <section id="books" class="section">
+    <div class="board-head">
+      <div>
+        <p class="eyebrow">The stacks</p>
+        <h2>Book inventory</h2>
+      </div>
+      <p class="board-note" id="invSummary">—</p>
+    </div>
+
+    <div class="ledger">
+      <table class="ledger-table">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Title</th>
+            <th>Author</th>
+            <th>Year</th>
+            <th>On shelf</th>
+            <th>Owned</th>
+            <th class="th-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="bookTable"></tbody>
+      </table>
+      <p class="ledger-empty" id="booksEmpty" hidden>
+        No books catalogued yet. Use <strong>Add Book</strong> to begin.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ SEARCH ============ -->
+  <section id="search" class="section">
+    <div class="board-head">
+      <div>
+        <p class="eyebrow">The index</p>
+        <h2>Search the catalogue</h2>
+      </div>
+      <p class="board-note">Matches on accession code or any part of a title. Case doesn't matter.</p>
+    </div>
+
+    <div class="index-search">
+      <div class="index-field">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input id="searchQuery" placeholder="Try a code like BK-101, or part of a title…" autocomplete="off">
+      </div>
+      <button class="btn-primary" id="searchBtn" type="button">Search</button>
+    </div>
+
+    <div class="lemonade">
+      <p class="eyebrow">Or browse by author</p>
+      <div class="chip-row" id="authorChips"></div>
+    </div>
+
+    <div class="ledger" id="searchResults"></div>
+  </section>
+
+  <!-- ============ ISSUE ============ -->
+  <section id="issue" class="section">
+    <div class="board-head">
+      <div>
+        <p class="eyebrow">The desk</p>
+        <h2>Issue a book</h2>
+      </div>
+      <p class="board-note">A copy leaves the shelf only if one is available, and only once per borrower.</p>
+    </div>
+
+    <div class="desk">
+      <form id="issueForm" class="card-form" novalidate>
+        <div class="field">
+          <label for="issueBookId">Accession code</label>
+          <input id="issueBookId" autocomplete="off" required list="bookCodes">
+          <p class="field-echo" id="issueBookEcho">No code typed yet.</p>
+        </div>
+        <div class="field">
+          <label for="issueStudentId">Borrower ID</label>
+          <input id="issueStudentId" autocomplete="off" required list="studentIds">
+          <p class="field-echo" id="issueStudentEcho">Any unique ID — e.g. S-1042.</p>
+        </div>
+        <div class="form-foot">
+          <button type="submit" class="btn-primary">Issue this book</button>
+          <p class="form-hint">Due date is logged 14 days out; overdue loans get a red tag.</p>
+        </div>
+      </form>
+
+      <aside class="desk-preview">
+        <p class="eyebrow">Due-date slip</p>
+        <div class="due-slip" id="dueSlip">
+          <p class="due-slip-kicker">Date due</p>
+          <p class="due-date" id="dueDate">—</p>
+          <p class="due-line" id="dueLine">Pick a book to preview the slip.</p>
+          <div class="date-grid" aria-hidden="true">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
+          <p class="due-foot">Return on or before this date.</p>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============ RETURN ============ -->
+  <section id="return" class="section">
+    <div class="board-head">
+      <div>
+        <p class="eyebrow">Returns</p>
+        <h2>Return a book</h2>
+      </div>
+      <p class="board-note">Find the loan below, or type the code and borrower ID by hand.</p>
+    </div>
+
+    <div class="loan-finder">
+      <p class="eyebrow">Active loans</p>
+      <div class="loan-chip-row" id="loanChips"></div>
+    </div>
+
+    <div class="desk">
+      <form id="returnForm" class="card-form" novalidate>
+        <div class="field">
+          <label for="returnBookId">Accession code</label>
+          <input id="returnBookId" autocomplete="off" required list="bookCodes">
+        </div>
+        <div class="field">
+          <label for="returnStudentId">Borrower ID</label>
+          <input id="returnStudentId" autocomplete="off" required list="studentIds">
+        </div>
+        <div class="form-foot">
+          <button type="submit" class="btn-primary">Mark as returned</button>
+          <p class="form-hint">A returned copy goes straight back onto the shelf count.</p>
+        </div>
+      </form>
+
+      <aside class="desk-preview returned-note">
+        <p class="eyebrow">House rule</p>
+        <p class="rule-quote">“A book returned is a book that can travel again.”</p>
+        <p class="rule-sub">Returns are permanent in the log — the copy count only ever moves forward.</p>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============ ISSUED ============ -->
+  <section id="issued" class="section">
+    <div class="board-head">
+      <div>
+        <p class="eyebrow">Out in the world</p>
+        <h2>Books on loan</h2>
+      </div>
+      <p class="board-note" id="loanSummary">—</p>
+    </div>
+
+    <div class="loan-board" id="issuedBoard"></div>
+    <p class="ledger-empty" id="issuedEmpty" hidden>Nothing is out on loan right now. The shelf is complete.</p>
+  </section>
+
+  <p id="message" class="toast" role="status" aria-live="polite"></p>
+</main>
+
+<footer class="colophon">
+  <div class="colophon-inner">
+    <div>
+      <p class="colophon-mark">The Reading Room</p>
+      <p class="colophon-sub">Library Management System · HTML, CSS &amp; JavaScript</p>
+    </div>
+    <p class="colophon-meta">
+      Data lives in <code>localStorage</code> on this device.
+      <button type="button" class="link-btn" id="exportBtn">Export ledger</button>
+      <span aria-hidden="true">·</span>
+      <button type="button" class="link-btn danger" id="resetBtn">Close the library</button>
+    </p>
+  </div>
+</footer>
+
+<!-- shared autocomplete lists -->
+<datalist id="bookCodes"></datalist>
+<datalist id="studentIds"></datalist>
+
+<!-- ============ QUICK SEARCH PALETTE ============ -->
+<div class="palette" id="palette" hidden>
+  <div class="palette-backdrop" data-close-palette></div>
+  <div class="palette-panel" role="dialog" aria-modal="true" aria-label="Quick search">
+    <div class="palette-input">
+      <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input id="paletteQuery" placeholder="Search titles, authors, codes…" autocomplete="off">
+      <kbd>esc</kbd>
+    </div>
+    <ul class="palette-list" id="paletteList"></ul>
+    <p class="palette-foot"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>↵</kbd> open card</span><span><kbd>ctrl</kbd>+<kbd>k</kbd> toggle</span></p>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
