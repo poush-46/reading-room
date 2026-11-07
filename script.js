@@ -9,10 +9,17 @@ const LOAN_DAYS = 14;
 const STORE_BOOKS = "libraryBooks";
 const STORE_ISSUES = "libraryIssues";
 const STORE_SEEDED = "readingRoomSeeded";
+const STORE_FINES = "readingRoomFines";
+const STORE_QUEUE = "readingRoomQueue";
+const STORE_RATE = "readingRoomFineRate";
+const STORE_THEME = "readingRoomTheme";
 
 /* ---------- data ---------- */
 let books = JSON.parse(localStorage.getItem(STORE_BOOKS) || "{}");
 let issueRecords = JSON.parse(localStorage.getItem(STORE_ISSUES) || "[]");
+let fines = JSON.parse(localStorage.getItem(STORE_FINES) || "[]");   // settled accounts
+let queue = JSON.parse(localStorage.getItem(STORE_QUEUE) || "[]");   // reservations
+let fineRate = Number(localStorage.getItem(STORE_RATE) || 2);        // ₹ per day, per copy
 
 let selectedBookId = null;
 let currentSection = "dashboard";
@@ -23,6 +30,9 @@ const $ = (id) => document.getElementById(id);
 function saveData() {
   localStorage.setItem(STORE_BOOKS, JSON.stringify(books));
   localStorage.setItem(STORE_ISSUES, JSON.stringify(issueRecords));
+  localStorage.setItem(STORE_FINES, JSON.stringify(fines));
+  localStorage.setItem(STORE_QUEUE, JSON.stringify(queue));
+  localStorage.setItem(STORE_RATE, String(fineRate));
 }
 
 function escapeHTML(value) {
@@ -36,6 +46,7 @@ function readText(value) { return String(value || "").trim(); }
 function showMessage(message, isError = false) {
   const el = $("message");
   if (!message) { el.classList.remove("show"); return; }
+  if (isError) Sound.error();
   el.textContent = message;
   el.classList.toggle("error", isError);
   el.classList.remove("show");
@@ -82,6 +93,78 @@ function loansOfStudent(studentId) {
 
 function isOverdue(record) { return record.dueOn ? record.dueOn < todayISO() : false; }
 
+function daysLate(record) {
+  if (!record.dueOn) return 0;
+  return Math.max(0, daysBetween(todayISO(), record.dueOn));
+}
+
+function fineFor(record) {
+  return daysLate(record) * fineRate;
+}
+
+function settledFor(studentId) {
+  return fines.filter((f) => f.studentId === studentId).reduce((t, f) => t + f.amount, 0);
+}
+
+/** one account per borrower: every overdue copy they hold, added up */
+function openAccounts() {
+  const map = new Map();
+  issueRecords.filter((r) => !r.returned && isOverdue(r)).forEach((r) => {
+    const book = books[r.bookId];
+    const key = r.studentId;
+    if (!map.has(key)) map.set(key, { studentId: key, amount: 0, days: 0, items: [] });
+    const acct = map.get(key);
+    const amount = fineFor(r);
+    acct.amount += amount;
+    acct.days = Math.max(acct.days, daysLate(r));
+    acct.items.push({ bookId: r.bookId, title: book ? book.title : r.bookId, days: daysLate(r), amount });
+  });
+  return [...map.values()].sort((a, b) => b.amount - a.amount);
+}
+
+function totalOutstanding() {
+  return openAccounts().reduce((t, a) => t + a.amount, 0);
+}
+
+/* ---------- reservation queue ---------- */
+function queueFor(bookId) {
+  return queue.filter((q) => q.bookId === bookId)
+    .sort((a, b) => a.addedAt.localeCompare(b.addedAt));
+}
+
+function queueElsewhere(studentId) {
+  return queue.filter((q) => q.studentId.toLowerCase() === studentId.toLowerCase());
+}
+
+function addToQueue(bookId, studentId) {
+  if (!books[bookId] || !studentId) return { ok: false, msg: "Pick a book and a borrower." };
+  if (!bookId) return { ok: false, msg: "Pick a book first." };
+  if (queueFor(bookId).some((q) => q.studentId.toLowerCase() === studentId.toLowerCase())) {
+    return { ok: false, msg: `${studentId} is already waiting for that copy.` };
+  }
+  if (queueElsewhere(studentId).length >= 3) {
+    return { ok: false, msg: `${studentId} already has three reservations — collect one first.` };
+  }
+  queue.push({ bookId, studentId, addedAt: new Date().toISOString() });
+  saveData();
+  updateDashboard();
+  return { ok: true, msg: `${studentId} queued for ${bookId}.` };
+}
+
+function removeFromQueue(bookId, studentId) {
+  queue = queue.filter((q) => !(q.bookId === bookId && q.studentId === studentId));
+  saveData();
+  updateDashboard();
+}
+
+/** the first person in line gets first refusal on a returned copy */
+function claimNextInQueue(bookId) {
+  const next = queueFor(bookId)[0];
+  if (!next) return null;
+  removeFromQueue(bookId, next.studentId);
+  return next;
+}
+
 /* Eight case-binding styles. Each is a generated cloth/leather texture that is
    tinted per book, so the shelf looks like a real collection rather than a
    colour swatch grid. */
@@ -121,16 +204,123 @@ const coverArt = (key) =>
     ? `url("${COVER_ART[key] || COVER_ART.forest}")`
     : `url("${ASSET_BASE}assets/covers/opt/${key}.webp")`;
 
+
+/* ==========================================================================
+   SOUND · every noise is synthesised with WebAudio, so there are no audio
+   files to download and nothing to 404 in the single-file build.
+   ========================================================================== */
+const Sound = (() => {
+  const KEY = "readingRoomSound";
+  let enabled = localStorage.getItem(KEY) !== "off";
+  let ctx = null;
+  let noiseBuf = null;
+
+  function context() {
+    if (!enabled) return null;
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    if (!ctx) {
+      ctx = new Ctx();
+      const len = Math.floor(ctx.sampleRate * 0.5);
+      noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const data = noiseBuf.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    }
+    if (ctx.state === "suspended") ctx.resume();
+    return ctx;
+  }
+
+  const env = (gain, t0, attack, peak, decay) => {
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(peak, t0 + attack);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + attack + decay);
+  };
+
+  function noise({ dur = 0.2, type = "bandpass", freq = 1800, q = 0.9, peak = 0.2, delay = 0 }) {
+    const c = context(); if (!c) return;
+    const t0 = c.currentTime + delay;
+    const src = c.createBufferSource(); src.buffer = noiseBuf;
+    const filter = c.createBiquadFilter(); filter.type = type; filter.frequency.value = freq; filter.Q.value = q;
+    const gain = c.createGain(); env(gain, t0, 0.012, peak, dur);
+    src.connect(filter); filter.connect(gain); gain.connect(c.destination);
+    src.start(t0); src.stop(t0 + dur + 0.05);
+  }
+
+  function tone({ freq = 440, dur = 0.12, type = "sine", peak = 0.08, delay = 0, glideTo = null }) {
+    const c = context(); if (!c) return;
+    const t0 = c.currentTime + delay;
+    const osc = c.createOscillator(); osc.type = type; osc.frequency.setValueAtTime(freq, t0);
+    if (glideTo) osc.frequency.exponentialRampToValueAtTime(glideTo, t0 + dur);
+    const gain = c.createGain(); env(gain, t0, 0.01, peak, dur);
+    osc.connect(gain); gain.connect(c.destination);
+    osc.start(t0); osc.stop(t0 + dur + 0.05);
+  }
+
+  return {
+    get enabled() { return enabled; },
+    toggle() {
+      enabled = !enabled;
+      localStorage.setItem(KEY, enabled ? "on" : "off");
+      if (enabled) this.tick();
+      return enabled;
+    },
+    /** revive audio on the first real gesture (browsers block it otherwise) */
+    wake() { context(); },
+    tick() { noise({ dur: 0.035, freq: 3400, q: 2.4, peak: 0.07 }); },
+    page() {          // a page turning: two soft paper swishes
+      noise({ dur: 0.16, type: "highpass", freq: 2200, peak: 0.13 });
+      noise({ dur: 0.2, freq: 1200, q: 1.2, peak: 0.1, delay: 0.09 });
+    },
+    open() {          // a hardcover swinging open: creak + settle
+      noise({ dur: 0.3, freq: 620, q: 1.6, peak: 0.16 });
+      tone({ freq: 150, glideTo: 96, dur: 0.26, peak: 0.07 });
+      noise({ dur: 0.14, freq: 2000, peak: 0.1, delay: 0.17 });
+    },
+    close() {
+      noise({ dur: 0.18, freq: 900, q: 1.4, peak: 0.13 });
+      tone({ freq: 110, glideTo: 70, dur: 0.18, peak: 0.06, delay: 0.03 });
+    },
+    stamp() {         // the ledger stamp: a thud + a little click
+      tone({ freq: 90, glideTo: 42, dur: 0.16, type: "triangle", peak: 0.3 });
+      noise({ dur: 0.09, freq: 420, type: "lowpass", peak: 0.24 });
+      tone({ freq: 1200, dur: 0.05, type: "square", peak: 0.03, delay: 0.02 });
+    },
+    error() {
+      tone({ freq: 300, glideTo: 190, dur: 0.2, type: "triangle", peak: 0.11 });
+    },
+    slip() {          // card pulled from the drawer
+      noise({ dur: 0.13, type: "highpass", freq: 2600, peak: 0.1 });
+    },
+    whoosh() {        // a book sliding back onto the shelf
+      noise({ dur: 0.26, freq: 700, q: 0.7, peak: 0.12 });
+      tone({ freq: 70, dur: 0.18, peak: 0.1, delay: 0.06 });
+    }
+  };
+})();
+
+/* wire the toggle in the masthead */
+function syncSoundButton() {
+  const btn = $("soundBtn");
+  if (!btn) return;
+  btn.setAttribute("aria-pressed", String(Sound.enabled));
+  btn.setAttribute("aria-label", Sound.enabled ? "Mute interface sounds" : "Turn interface sound on");
+  btn.title = Sound.enabled ? "Mute interface sounds" : "Turn interface sound on";
+  $("soundLabel").textContent = Sound.enabled ? "Sound on" : "Muted";
+}
+
 /* ==========================================================================
    NAVIGATION
    ========================================================================== */
 const SECTION_LABELS = {
   dashboard: "Dashboard", addBook: "Add Book", books: "Inventory",
-  search: "Search", issue: "Issue", return: "Return", issued: "On Loan"
+  search: "Search", issue: "Issue", return: "Return", issued: "On Loan",
+  ledgerdesk: "Ledger"
 };
 
 function showSection(sectionId) {
+  const changed = sectionId !== currentSection;
   currentSection = sectionId;
+  if (changed) Sound.slip();
   document.querySelectorAll(".section").forEach((s) => s.classList.remove("active"));
   const target = $(sectionId);
   if (target) target.classList.add("active");
@@ -155,6 +345,7 @@ function showSection(sectionId) {
 
   if (sectionId === "books") displayAllBooks();
   if (sectionId === "issued") displayIssuedBooks();
+  if (sectionId === "ledgerdesk") renderLedgerDesk();
   if (sectionId === "dashboard") { updateDashboard(); renderShelf(); renderSlip(); }
   if (sectionId === "return") renderLoanFinder();
   if (sectionId === "search") renderAuthorChips();
@@ -196,6 +387,18 @@ function updateDashboard() {
   setStat("returnedCount", returned);
 
   $("loanCount").textContent = String(active);
+
+  /* money + reservations */
+  const owed = totalOutstanding();
+  const accounts = openAccounts();
+  $("finesOwed").textContent = "₹" + owed;
+  $("finesFoot").textContent = owed
+    ? `${accounts.length} account${accounts.length === 1 ? "" : "s"} · ₹${fineRate}/day`
+    : "nothing overdue";
+  $("waitingCount").textContent = String(queue.length);
+  const badge = $("fineCount");
+  badge.textContent = String(accounts.length);
+  badge.dataset.zero = String(accounts.length === 0);
 }
 
 /* ==========================================================================
@@ -271,10 +474,10 @@ function renderShelf() {
 
   shelf.querySelectorAll(".spine").forEach((spine) => {
     spine.addEventListener("click", () => {
-      selectedBookId = spine.dataset.book;
-      shelf.querySelectorAll(".spine").forEach((s) => s.classList.remove("selected"));
-      spine.classList.add("selected");
-      renderSlip();
+      Sound.tick();
+      flySpineToReader(spine.dataset.book);
+      // let the book lift, then swing open
+      setTimeout(() => openBook(spine.dataset.book), 300);
     });
   });
 }
@@ -323,6 +526,178 @@ function renderSlip() {
     $("returnStudentId").focus();
   };
 }
+
+
+/* ==========================================================================
+   THE READER · click a spine and the book lifts off the shelf, then opens
+   ========================================================================== */
+const BLURBS = {
+  forest:   "A well-travelled copy — the spine has softened with use.",
+  oxblood:  "Bound in oxblood cloth with a gold rule; still tight in the hinge.",
+  navy:     "Full navy leather, gilt corners. Handle with a clean conscience.",
+  tan:      "Natural buckram, the colour of strong tea.",
+  plum:     "Aubergine cloth with rose-gold tooling.",
+  rust:     "Sienna cloth, faintly sunned along the top board.",
+  teal:     "Sea-green cloth; the foil has worn pale at the head.",
+  charcoal: "Charcoal boards with a blind rule. Quiet and serious."
+};
+
+let readerOpenFor = null;
+let restoreFocusTo = null;
+
+function flySpineToReader(bookId) {
+  // find the spine without relying on CSS.escape (not in older browsers / jsdom)
+  const spine = Array.from(document.querySelectorAll(".spine"))
+    .find((el) => el.dataset.book === bookId);
+  if (!spine) return;
+  spine.classList.add("is-flying");
+  // a short arc: the book lifts, drifts toward the centre of the panel
+  const reader = $("reader");
+  const from = spine.getBoundingClientRect();
+  const to = reader.getBoundingClientRect();
+  const dx = (to.left + to.width / 2) - (from.left + from.width / 2);
+  const dy = (to.top + to.height / 2) - (from.top + from.height / 2);
+  spine.animate(
+    [
+      { transform: "translate(0,0) rotate(0deg)", offset: 0 },
+      { transform: `translate(${dx * 0.6}px, ${dy * 0.42 - 24}px) rotate(-6deg)`, offset: 0.6 },
+      { transform: `translate(${dx}px, ${dy * 0.8}px) rotate(-2deg) scale(.9)`, offset: 1 }
+    ],
+    { duration: 340, easing: "cubic-bezier(.3,.8,.3,1)", fill: "forwards" }
+  );
+}
+
+function openBook(bookId) {
+  const book = books[bookId];
+  if (!book) return;
+  selectedBookId = bookId;
+
+  const binding = bindingFor(book.id);
+  const reader = $("reader");
+  const rig = $("openbook");
+  restoreFocusTo = document.activeElement;
+
+  if (readerOpenFor) Sound.close();
+  reader.hidden = false;
+  readerOpenFor = bookId;
+  document.body.classList.add("reader-open");
+  Sound.wake();
+  Sound.open();
+
+  rig.style.setProperty("--ob-c1", binding.c1);
+  rig.style.setProperty("--ob-c2", binding.c2);
+  rig.style.setProperty("--ob-foil", binding.foil);
+  rig.querySelector(".ob-spine-text").textContent = book.id;
+
+  const loans = activeLoansFor(book.id);
+  const owns = ownedCopies(book);
+  $("obTitle").textContent = book.title;
+  $("obAuthor").textContent = book.author;
+  $("obCode").textContent = book.id;
+  $("obYear").textContent = book.year;
+  $("obCopies").textContent = `${book.availableCopies} of ${owns} on shelf`;
+  const status = $("obStatus");
+  status.textContent = book.availableCopies > 0 ? "On shelf" : "All copies out";
+  status.className = book.availableCopies > 0 ? "is-ok" : "is-out";
+  $("obBlurb").textContent = BLURBS[binding.key] || "";
+  rig.querySelectorAll("[data-folio]").forEach((el) => {
+    el.textContent = "No. " + book.id.replace(/[^0-9]/g, "").padStart(3, "0");
+  });
+
+  const stamp = $("obStamp");
+  stamp.textContent = book.availableCopies > 0 ? "ON SHELF" : "ALL OUT";
+  stamp.classList.toggle("is-out", book.availableCopies === 0);
+
+  const list = $("obLoans");
+  if (loans.length === 0) {
+    list.innerHTML = '<li><span>Nothing out at the moment.</span><span></span></li>';
+  } else {
+    list.innerHTML = loans.map((r) => {
+      const late = isOverdue(r);
+      return `<li class="${late ? "late" : ""}">
+        <span><b>${escapeHTML(r.studentId)}</b></span>
+        <span>${late ? "overdue " + Math.abs(daysBetween(r.dueOn, todayISO())) + "d" : "due " + prettyDate(r.dueOn)}</span>
+        <span>issued ${r.issuedOn ? prettyDate(r.issuedOn) : "—"}</span>
+        <span>${late ? "collect now" : "on time"}</span>
+      </li>`;
+    }).join("");
+  }
+
+  $("obNote").textContent = loans.length
+    ? "A copy is held for each borrower until it comes back."
+    : (book.availableCopies === 0 ? "Every copy is on loan — check the waiting shelf." : "Ready to borrow from the desk.");
+
+  const actions = $("obActions");
+  const waitingForThis = queueFor(book.id).length;
+  actions.innerHTML = `
+    <button class="ob-btn solid" type="button" data-act="issue" ${book.availableCopies === 0 ? "disabled" : ""}>Issue a copy</button>
+    <button class="ob-btn" type="button" data-act="return" ${loans.length ? "" : "disabled"}>Log a return</button>
+    <button class="ob-btn" type="button" data-act="reserve">${waitingForThis ? `Queue (${waitingForThis})` : "Reserve"}</button>
+    <button class="ob-btn" type="button" data-act="search">Find in index</button>`;
+  actions.querySelectorAll("button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const act = btn.dataset.act;
+      if (act === "issue") {
+        closeBook(true);
+        showSection("issue");
+        $("issueBookId").value = book.id;
+        $("issueBookId").dispatchEvent(new Event("input"));
+        $("issueStudentId").focus();
+      }
+      if (act === "return") {
+        closeBook(true);
+        showSection("return");
+        $("returnBookId").value = book.id;
+        $("returnStudentId").value = loans[0].studentId;
+      }
+      if (act === "reserve") {
+        closeBook(true);
+        showSection("ledgerdesk");
+        const sel = document.getElementById("queueBook");
+        if (sel) sel.value = book.id;
+        const who = document.getElementById("queueWho");
+        if (who) who.focus();
+      }
+      if (act === "search") {
+        closeBook(true);
+        showSection("search");
+        $("searchQuery").value = book.title;
+        runSearch(book.title);
+      }
+    });
+  });
+
+  renderSlip();
+  document.querySelectorAll(".spine").forEach((sp) => sp.classList.toggle("selected", sp.dataset.book === bookId));
+  setTimeout(() => rig.querySelector(".reader-close").focus(), 120);
+}
+
+function closeBook(silent = false) {
+  const reader = $("reader");
+  if (reader.hidden) return;
+  reader.hidden = true;
+  document.body.classList.remove("reader-open");
+  document.querySelectorAll(".spine.is-flying").forEach((sp) => sp.classList.remove("is-flying"));
+  if (typeof Element.prototype.getAnimations === "function") {
+    document.querySelectorAll(".spine").forEach((sp) => {
+      sp.getAnimations().forEach((a) => a.cancel());
+    });
+  }
+  if (!silent) Sound.close();
+  readerOpenFor = null;
+  if (restoreFocusTo && restoreFocusTo.focus) restoreFocusTo.focus();
+}
+
+$("reader").addEventListener("click", (e) => {
+  if (e.target.closest("[data-close-reader]")) closeBook();
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && readerOpenFor) { closeBook(); }
+});
+
+/* A fixed overlay re-centres itself, so never close on resize — mobile
+   browsers fire resize when the address bar collapses. */
 
 /* ==========================================================================
    ADD BOOK
@@ -404,6 +779,7 @@ $("addBookForm").addEventListener("submit", function (event) {
   selectedBookId = id;
   renderSlip();
 
+  Sound.stamp();
   showMessage(`“${title}” stamped into the ledger as ${id}.`);
 });
 
@@ -585,7 +961,7 @@ function renderAuthorChips() {
    ========================================================================== */
 function renderDuePreview() {
   const book = books[readText($("issueBookId").value).toUpperCase()];
-  const date = addDaysISO(LOAN_DAYS);
+  const date = addDaysISO(loanDays || LOAN_DAYS);
   $("dueDate").textContent = prettyDate(date).toUpperCase();
 
   if (book) {
@@ -616,6 +992,16 @@ function echoIssueStudent() {
   echo.textContent = loans ? `${loans} book${loans === 1 ? "" : "s"} currently out to ${raw}.` : `New borrower ${raw}.`;
   echo.classList.add("good");
 }
+
+let loanDays = 14;
+$("daysRow").querySelectorAll(".day-chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    loanDays = Number(chip.dataset.days);
+    $("daysRow").querySelectorAll(".day-chip").forEach((c) => c.classList.toggle("on", c === chip));
+    Sound.tick();
+    renderDuePreview();
+  });
+});
 
 $("issueBookId").addEventListener("input", echoIssueBook);
 $("issueStudentId").addEventListener("input", echoIssueStudent);
@@ -653,7 +1039,19 @@ $("issueForm").addEventListener("submit", function (event) {
     return;
   }
 
-  const dueOn = addDaysISO(LOAN_DAYS);
+  // honour the waiting list: only the reader at the head of the queue may take it
+  const line = queueFor(bookId);
+  if (line.length && line[0].studentId.toLowerCase() !== studentId.toLowerCase()) {
+    Sound.error();
+    showMessage(`That copy is held for ${line[0].studentId}, first in the queue. Collect it under their ID, or remove them from the list.`, true);
+    return;
+  }
+
+  if (queueElsewhere(studentId).some((q) => q.bookId === bookId)) {
+    removeFromQueue(bookId, studentId);
+  }
+
+  const dueOn = addDaysISO(loanDays || LOAN_DAYS);
   issueRecords.push({
     bookId,
     studentId,
@@ -676,7 +1074,9 @@ $("issueForm").addEventListener("submit", function (event) {
   refreshDatalists();
   renderLoanFinder();
 
-  showMessage(`Issued to ${studentId}. ${prettyDate(dueOn)} is the due date.`);
+  Sound.stamp();
+  const stillWaiting = queueFor(bookId).length;
+  showMessage(`Issued to ${studentId}. ${prettyDate(dueOn)} is the due date.${stillWaiting ? ` ${stillWaiting} still waiting.` : ""}`);
 });
 
 /* ==========================================================================
@@ -732,9 +1132,14 @@ $("returnForm").addEventListener("submit", function (event) {
     return;
   }
 
+  const late = isOverdue(record);
+  const owed = late ? fineFor(record) : 0;
+
   record.returned = true;
   record.returnedOn = todayISO();
   book.availableCopies++;
+
+  const nextInLine = claimNextInQueue(bookId);
 
   saveData();
   this.reset();
@@ -746,8 +1151,160 @@ $("returnForm").addEventListener("submit", function (event) {
   refreshDatalists();
   renderLoanFinder();
 
-  showMessage(`“${book.title}” returned. ${book.availableCopies} on shelf now.`);
+  Sound.stamp();
+  if (nextInLine) {
+    Sound.slip();
+    showMessage(`“${book.title}” returned — held for ${nextInLine.studentId}, first in the queue.${owed ? ` ₹${owed} fine still owing.` : ""}`);
+  } else if (owed) {
+    Sound.stamp();
+    showMessage(`“${book.title}” returned · ₹${owed} fine now owing (${daysLate(record)} days late).`);
+  } else {
+    Sound.stamp();
+    showMessage(`“${book.title}” returned. ${book.availableCopies} on shelf now.`);
+  }
 });
+
+
+/* ==========================================================================
+   THE LEDGER DESK · render fines + the waiting list
+   ========================================================================== */
+function renderLedgerDesk() {
+  const outstanding = totalOutstanding();
+  const waiting = new Set(queue.map((q) => q.bookId + "|" + q.studentId.toLowerCase())).size;
+
+  $("ledgerNote").textContent = outstanding
+    ? `₹${outstanding} outstanding across ${openAccounts().length} account${openAccounts().length === 1 ? "" : "s"} · ${waiting} reservation${waiting === 1 ? "" : "s"} queued`
+    : `Nothing owed · ${waiting} reservation${waiting === 1 ? "" : "s"} queued`;
+
+  /* ---- fines ---- */
+  const accounts = openAccounts();
+  const list = $("fineList");
+  $("fineEmpty").hidden = accounts.length > 0;
+
+  list.innerHTML = accounts.map((acct) => {
+    const items = acct.items
+      .map((i) => `<b>${escapeHTML(i.title)}</b> ${i.days}d late · ₹${i.amount}`)
+      .join(" &nbsp;·&nbsp; ");
+    const settled = settledFor(acct.studentId);
+    return `
+      <article class="fine-card">
+        <span class="fine-who">${escapeHTML(acct.studentId)}</span>
+        <span></span>
+        <span class="fine-amount">₹${acct.amount}<small>owing</small></span>
+        <p class="fine-detail">${items}${settled ? ` &nbsp;·&nbsp; ₹${settled} settled before` : ""}</p>
+        <div class="fine-actions">
+          <button class="mini-btn settle" type="button" data-settle="${escapeHTML(acct.studentId)}">Settle ₹${acct.amount}</button>
+          <button class="mini-btn" type="button" data-wave="${escapeHTML(acct.studentId)}">Waive as a kindness</button>
+        </div>
+      </article>`;
+  }).join("");
+
+  list.querySelectorAll("[data-settle]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.settle;
+      const acct = openAccounts().find((a) => a.studentId === id);
+      if (!acct) return;
+      fines.push({
+        studentId: id,
+        amount: acct.amount,
+        settledOn: todayISO(),
+        items: acct.items
+      });
+      // a settled account stops accruing: the overdue copies are cleared by
+      // resetting their due date to today (the copy is still out, but paid up)
+      issueRecords.forEach((r) => {
+        if (!r.returned && r.studentId === id && isOverdue(r)) r.renewedOn = todayISO(), r.dueOn = todayISO();
+      });
+      saveData();
+      Sound.stamp();
+      refreshAll();
+      renderLedgerDesk();
+      showMessage(`${id} settled ₹${acct.amount}. Receipt logged in the ledger.`);
+    });
+  });
+
+  list.querySelectorAll("[data-wave]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.wave;
+      const acct = openAccounts().find((a) => a.studentId === id);
+      if (!acct) return;
+      if (!confirm(`Waive ₹${acct.amount} for ${id}? This is recorded in the ledger.`)) return;
+      fines.push({ studentId: id, amount: 0, waived: acct.amount, settledOn: todayISO(), items: acct.items });
+      issueRecords.forEach((r) => {
+        if (!r.returned && r.studentId === id && isOverdue(r)) { r.renewedOn = todayISO(); r.dueOn = todayISO(); }
+      });
+      saveData();
+      Sound.tick();
+      refreshAll();
+      renderLedgerDesk();
+      showMessage(`₹${acct.amount} waived for ${id}. A generous library.`);
+    });
+  });
+
+  /* ---- waiting list ---- */
+  const qList = $("queueList");
+  const grouped = new Map();
+  queue.forEach((q) => {
+    if (!grouped.has(q.bookId)) grouped.set(q.bookId, []);
+    grouped.get(q.bookId).push(q);
+  });
+  $("queueEmpty").hidden = grouped.size > 0;
+
+  qList.innerHTML = [...grouped.entries()].map(([bookId, entries]) => {
+    const book = books[bookId];
+    const people = entries
+      .sort((a, b) => a.addedAt.localeCompare(b.addedAt))
+      .map((q, i) => `
+        <div class="queue-person ${i === 0 ? "next" : ""}">
+          <span class="q-pos">${i + 1}</span>
+          <span class="q-who">${escapeHTML(q.studentId)}</span>
+          <button class="q-drop" type="button" data-drop-book="${escapeHTML(bookId)}" data-drop-who="${escapeHTML(q.studentId)}" aria-label="Remove ${escapeHTML(q.studentId)} from the queue">×</button>
+          <span class="q-since">queued ${prettyDate(q.addedAt.slice(0, 10))}</span>
+        </div>
+        ${i === 0 ? `<p class="q-claim">First refusal on the next copy returned.</p>` : ""}`)
+      .join("");
+    return `
+      <div class="queue-book">
+        <div class="queue-title">
+          <h4>${escapeHTML(book ? book.title : bookId)}</h4>
+          <span class="q-code">${escapeHTML(bookId)}</span>
+        </div>
+        <div class="queue-people">${people}</div>
+      </div>`;
+  }).join("");
+
+  qList.querySelectorAll("[data-drop-book]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      removeFromQueue(btn.dataset.dropBook, btn.dataset.dropWho);
+      Sound.tick();
+      refreshAll();
+      renderLedgerDesk();
+      showMessage(`${btn.dataset.dropWho} removed from the queue.`);
+    });
+  });
+
+  /* ---- add-to-queue form ---- */
+  const bookOpts = Object.values(books)
+    .map((b) => `<option value="${escapeHTML(b.id)}">${escapeHTML(b.title)} — ${escapeHTML(b.id)}${b.availableCopies === 0 ? " (all out)" : ""}</option>`)
+    .join("");
+  qList.insertAdjacentHTML("beforeend", `
+    <form class="queue-add" id="queueForm" novalidate>
+      <select id="queueBook" aria-label="Book to reserve">${bookOpts || '<option value="">No books yet</option>'}</select>
+      <input id="queueWho" placeholder="Borrower ID" aria-label="Borrower ID" autocomplete="off">
+      <button type="submit">Reserve</button>
+    </form>
+    <p class="q-breadcrumb">Reservations are held in this browser — the first in line is offered the copy on return.</p>`);
+
+  $("queueForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const res = addToQueue($("queueBook").value, readText($("queueWho").value));
+    if (!res.ok) { Sound.error(); showMessage(res.msg, true); return; }
+    Sound.tick();
+    refreshAll();
+    renderLedgerDesk();
+    showMessage(res.msg);
+  });
+}
 
 /* ==========================================================================
    ON LOAN BOARD
@@ -799,6 +1356,7 @@ function displayIssuedBooks() {
           <div><dt>Borrower</dt><dd>${escapeHTML(r.studentId)}</dd></div>
           <div><dt>Issued</dt><dd>${r.issuedOn ? prettyDate(r.issuedOn) : "—"}</dd></div>
           <div><dt>Due</dt><dd class="${overdue ? "over" : ""}">${due}${overdue && days !== null ? ` · ${Math.abs(days)}d late` : ""}</dd></div>
+          ${overdue ? `<div><dt>Fine</dt><dd class="over">₹${fineFor(r)} <span style="font-weight:400;font-size:10.5px">(${daysLate(r)}d × ₹${fineRate})</span></dd></div>` : ""}
         </dl>
         <div class="loan-actions">
           <button class="mini-btn" type="button" data-return-book="${escapeHTML(r.bookId)}" data-return-student="${escapeHTML(r.studentId)}">Return</button>
@@ -826,6 +1384,7 @@ function displayIssuedBooks() {
       showSection("dashboard");
       renderShelf();
       renderSlip();
+      openBook(btn.dataset.openBook);
     });
   });
 }
@@ -902,7 +1461,7 @@ function openBookFromPalette(index) {
   showSection("dashboard");
   renderShelf();
   renderSlip();
-  showMessage(`Card pulled for ${book.id}.`);
+  openBook(book.id);
 }
 
 $("paletteBtn").addEventListener("click", openPalette);
@@ -942,6 +1501,65 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+
+/* ==========================================================================
+   LAMPS · after-hours theme
+   ========================================================================== */
+function applyTheme(theme, announce = false) {
+  const night = theme === "night";
+  document.documentElement.setAttribute("data-theme", night ? "night" : "day");
+  localStorage.setItem(STORE_THEME, night ? "night" : "day");
+  const btn = $("themeBtn");
+  if (btn) {
+    btn.setAttribute("aria-pressed", String(night));
+    btn.setAttribute("aria-label", night ? "Switch to daytime lighting" : "Switch to after-hours lighting");
+    btn.title = night ? "Bring the daylight back" : "Dim the lamps";
+    $("themeLabel").textContent = night ? "Lamps down" : "Lamps up";
+  }
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", night ? "#171510" : "#1d3b2f");
+  if (announce) showMessage(night ? "The lamps are down. After-hours mode." : "Daylight restored.");
+}
+
+function initTheme() {
+  const saved = localStorage.getItem(STORE_THEME);
+  const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  applyTheme(saved || (prefersDark ? "night" : "day"));
+  $("themeBtn").addEventListener("click", () => {
+    const night = document.documentElement.getAttribute("data-theme") === "night";
+    Sound.tick();
+    applyTheme(night ? "day" : "night", true);
+  });
+}
+
+/* ==========================================================================
+   SOUND TOGGLE + first-gesture wake
+   ========================================================================== */
+syncSoundButton();
+document.addEventListener("DOMContentLoaded", () => {});
+
+$("fineRate").addEventListener("change", () => {
+  const v = Math.max(0, Math.min(100, Number($("fineRate").value) || 0));
+  fineRate = v;
+  $("fineRate").value = v;
+  saveData();
+  Sound.tick();
+  refreshAll();
+  renderLedgerDesk();
+  showMessage(`Fines are now ₹${v} per day, per copy.`);
+});
+
+$("soundBtn").addEventListener("click", () => {
+  const on = Sound.toggle();
+  syncSoundButton();
+  if (on) Sound.tick();
+  showMessage(on ? "Interface sound on." : "Interface sound muted.");
+});
+
+["pointerdown", "keydown"].forEach((evt) => {
+  window.addEventListener(evt, () => Sound.wake(), { once: true });
+});
+
 /* ==========================================================================
    CLOCK
    ========================================================================== */
@@ -958,8 +1576,11 @@ $("exportBtn").addEventListener("click", () => {
   const payload = {
     library: "The Reading Room",
     exportedAt: new Date().toISOString(),
+    fineRate,
     books,
-    issueRecords
+    issueRecords,
+    fines,
+    queue
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -977,9 +1598,13 @@ $("resetBtn").addEventListener("click", () => {
   if (!confirm("Close the library? This erases every book and loan stored in this browser.")) return;
   books = {};
   issueRecords = [];
+  fines = [];
+  queue = [];
   selectedBookId = null;
   localStorage.removeItem(STORE_BOOKS);
   localStorage.removeItem(STORE_ISSUES);
+  localStorage.removeItem(STORE_FINES);
+  localStorage.removeItem(STORE_QUEUE);
   localStorage.setItem(STORE_SEEDED, "1");
   saveData();
   refreshAll();
@@ -1034,9 +1659,12 @@ function refreshAll() {
   renderAuthorChips();
   updateCoverPreview();
   updateClock();
+  if (currentSection === "ledgerdesk") renderLedgerDesk();
 }
 
 seedSampleLibrary();
+$("fineRate").value = fineRate;
+initTheme();
 refreshAll();
 setInterval(updateClock, 60000);
 

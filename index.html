@@ -41,6 +41,18 @@
         <p class="clock-day" id="clockDay">—</p>
         <p class="clock-date" id="clockDate">—</p>
       </div>
+      <button class="lamps-btn" id="themeBtn" type="button" aria-pressed="false"
+              aria-label="Switch to after-hours lighting" title="Switch the lamps">
+        <span class="lamp-glyph" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="15" height="15"><path d="M12 3.2v1.6M5.6 6.3l1.2 1.2M18.4 6.3l-1.2 1.2M3.5 12.2h1.7M18.8 12.2h1.7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M8 20.2h8M9 17.6h6M12 17.6V9.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M9.4 9.8a2.6 2.6 0 0 1 5.2 0z" fill="currentColor"/></svg>
+        </span>
+        <span class="lamps-label" id="themeLabel">Lamps up</span>
+      </button>
+      <button class="sound-btn" id="soundBtn" type="button" aria-pressed="true"
+              aria-label="Mute interface sounds" title="Mute interface sounds">
+        <span class="sound-bars" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="sound-label" id="soundLabel">Sound on</span>
+      </button>
       <button class="palette-btn" id="paletteBtn" type="button" aria-label="Open quick search">
         <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         <span>Quick search</span>
@@ -78,6 +90,10 @@
       <span class="tab-ico" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M20 7H7M11 3.5 7 7l4 3.5"/><path d="M4 17h13M13 13.5 17 17l-4 3.5"/></svg>
       </span>Return</button>
+    <button class="tab" data-section="ledgerdesk" aria-current="false">
+      <span class="tab-ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M6.5 3.5h11a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 19V5a1.5 1.5 0 0 1 1.5-1.5Z"/><path d="M8.5 8h7M8.5 11.5h7M8.5 15h3.5"/></svg>
+      </span>Ledger <span class="tab-count warn" id="fineCount">0</span></button>
     <button class="tab" data-section="issued" aria-current="false">
       <span class="tab-ico" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M6 3.5h9l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1Z"/><path d="M14.5 3.7V9h5.2"/><path d="M8.5 13h7M8.5 16.5h5"/></svg>
@@ -124,6 +140,16 @@
         <p class="stat-value" id="returnedCount">0</p>
         <p class="stat-foot">all-time, this browser</p>
       </article>
+      <article class="stat">
+        <p class="stat-label">Fines outstanding</p>
+        <p class="stat-value" id="finesOwed">₹0</p>
+        <p class="stat-foot" id="finesFoot">nothing overdue</p>
+      </article>
+      <article class="stat">
+        <p class="stat-label">Waiting list</p>
+        <p class="stat-value" id="waitingCount">0</p>
+        <p class="stat-foot">readers in the queue</p>
+      </article>
     </div>
 
     <div class="board">
@@ -132,7 +158,7 @@
         <div class="shelf-head">
           <div>
             <h3 class="shelf-title">The shelf</h3>
-            <p class="shelf-sub">Each spine is one title. Thickness = copies owned. Click a spine to open its card.</p>
+            <p class="shelf-sub">Each spine is one title — thickness = copies owned. Click a book and it lifts off the shelf, then opens to its borrower's slip.</p>
           </div>
           <div class="shelf-legend" aria-hidden="true">
             <span><i class="dot dot-avail"></i>On shelf</span>
@@ -331,9 +357,17 @@
           <input id="issueStudentId" autocomplete="off" required list="studentIds">
           <p class="field-echo" id="issueStudentEcho">Any unique ID — e.g. S-1042.</p>
         </div>
+        <div class="field">
+          <label for="issueDays">Loan period <span>fine starts after the due date</span></label>
+          <div class="days-row" id="daysRow">
+            <button type="button" class="day-chip on" data-days="14">14 days · standard</button>
+            <button type="button" class="day-chip" data-days="7">7 days · short</button>
+            <button type="button" class="day-chip" data-days="28">28 days · staff</button>
+          </div>
+        </div>
         <div class="form-foot">
           <button type="submit" class="btn-primary">Issue this book</button>
-          <p class="form-hint">Due date is logged 14 days out; overdue loans get a red tag.</p>
+          <p class="form-hint" id="issueHint">Overdue copies are charged ₹<b>2</b> per day, per copy.</p>
         </div>
       </form>
 
@@ -392,6 +426,46 @@
     </div>
   </section>
 
+  <!-- ============ LEDGER DESK · fines + waiting list ============ -->
+  <section id="ledgerdesk" class="section">
+    <div class="board-head">
+      <div>
+        <p class="eyebrow">Accounts &amp; reservations</p>
+        <h2>The ledger desk</h2>
+      </div>
+      <p class="board-note" id="ledgerNote">—</p>
+    </div>
+
+    <div class="ledger-split">
+      <div class="ledger-col">
+        <div class="col-head">
+          <div>
+            <p class="eyebrow">Overdue accounts</p>
+            <h3>Fines payable</h3>
+          </div>
+          <label class="fine-rate">
+            <span>₹ per day</span>
+            <input type="number" id="fineRate" min="0" max="100" step="1" value="2" inputmode="numeric">
+          </label>
+        </div>
+        <div class="fine-list" id="fineList"></div>
+        <p class="ledger-empty" id="fineEmpty" hidden>No fines outstanding — every copy is back on time.</p>
+      </div>
+
+      <div class="ledger-col">
+        <div class="col-head">
+          <div>
+            <p class="eyebrow">Reservations</p>
+            <h3>Waiting list</h3>
+          </div>
+          <p class="col-note">First in line gets the next returned copy.</p>
+        </div>
+        <div class="queue-list" id="queueList"></div>
+        <p class="ledger-empty" id="queueEmpty" hidden>Nobody is waiting. Shelves and readers are in harmony.</p>
+      </div>
+    </div>
+  </section>
+
   <!-- ============ ISSUED ============ -->
   <section id="issued" class="section">
     <div class="board-head">
@@ -427,6 +501,42 @@
 <!-- shared autocomplete lists -->
 <datalist id="bookCodes"></datalist>
 <datalist id="studentIds"></datalist>
+
+<!-- ============ OPENED BOOK (fixed overlay) ============ -->
+<div class="reader" id="reader" hidden>
+  <div class="reader-scrim" data-close-reader></div>
+  <div class="openbook" id="openbook" role="dialog" aria-modal="true" aria-label="Opened book">
+    <div class="ob-spine" aria-hidden="true"><span class="ob-spine-text"></span></div>
+    <div class="ob-page ob-left">
+      <div class="ob-inner">
+        <p class="ob-kicker">The Reading Room · card catalogue</p>
+        <p class="ob-folio" data-folio>No. —</p>
+        <h3 class="ob-title" id="obTitle">—</h3>
+        <p class="ob-author" id="obAuthor">—</p>
+        <dl class="ob-meta">
+          <div><dt>Accession</dt><dd id="obCode">—</dd></div>
+          <div><dt>Published</dt><dd id="obYear">—</dd></div>
+          <div><dt>Copies</dt><dd id="obCopies">—</dd></div>
+          <div><dt>Status</dt><dd id="obStatus">—</dd></div>
+        </dl>
+        <p class="ob-blurb" id="obBlurb"></p>
+      </div>
+    </div>
+    <div class="ob-page ob-right">
+      <div class="ob-inner">
+        <p class="ob-kicker">Borrower's slip</p>
+        <ul class="ob-loans" id="obLoans"></ul>
+        <p class="ob-note" id="obNote"></p>
+        <div class="ob-actions" id="obActions"></div>
+        <p class="ob-stamp" id="obStamp" aria-hidden="true">ON SHELF</p>
+      </div>
+    </div>
+    <button class="reader-close" type="button" data-close-reader aria-label="Close the book">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+    <p class="reader-hint" aria-hidden="true">Esc or click outside to close</p>
+  </div>
+</div>
 
 <!-- ============ QUICK SEARCH PALETTE ============ -->
 <div class="palette" id="palette" hidden>

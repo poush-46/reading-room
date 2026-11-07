@@ -7,6 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..800;1,9..144,300..800&family=Inter:wght@400;500;600;700&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+<meta name="description" content="The Reading Room · a vintage card-catalogue library management system for books, borrowers and due dates.">
+<meta name="theme-color" content="#1d3b2f">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231d3b2f'/%3E%3Cpath d='M10 24V12.5a2 2 0 0 1 2-2h1.5v13.5M18.5 24V10.5H20a2 2 0 0 1 2 2V24M8.5 24h15' fill='none' stroke='%23d9a95b' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
 /* ==========================================================================
    THE READING ROOM · Library Management System
@@ -32,6 +35,10 @@
   --red:        #8f3b2e;
   --red-soft:   #f0dcd4;
   --ok:         #2f6a4f;
+  --fine:       #a8641e;   /* amber, for money owed */
+  --fine-soft:  #f3e4c9;
+  --queue:      #4a5d7a;   /* dusty blue, for reservations */
+  --queue-soft: #e2e7ee;
 
   --serif: "Fraunces", "Iowan Old Style", Georgia, serif;
   --sans:  "Inter", system-ui, -apple-system, sans-serif;
@@ -256,7 +263,7 @@ main {
    DASHBOARD · STATS
    ========================================================================== */
 .stats {
-  display: grid; grid-template-columns: repeat(4, minmax(0,1fr));
+  display: grid; grid-template-columns: repeat(3, minmax(0,1fr));
   gap: 0; margin-bottom: 26px;
   border: 1px solid var(--line); border-radius: var(--r-md);
   background: linear-gradient(180deg, #f8f2e2, #efe5cd);
@@ -266,9 +273,11 @@ main {
 .stat {
   padding: 20px 22px 18px;
   border-right: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
   position: relative;
 }
-.stat:last-child { border-right: 0; }
+.stat:nth-child(3n) { border-right: 0; }
+.stat:nth-last-child(-n+3) { border-bottom: 0; }
 .stat::before {
   content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px;
   background: linear-gradient(90deg, var(--brass), transparent);
@@ -1248,7 +1257,7 @@ main {
   .board { grid-template-columns: 1fr; gap: 18px; }
   .slip-wrap { position: static; max-width: none; display: grid; }
   .slip { transform: none; max-width: 460px; margin: 0 auto; width: 100%; }
-  .stats { grid-template-columns: repeat(4, minmax(0,1fr)); }
+  .stats { grid-template-columns: repeat(3, minmax(0,1fr)); }
 }
 
 /* tablets in portrait, and phones landscape (≤ 900px) */
@@ -1259,8 +1268,9 @@ main {
   .book-stage { padding: 10px 0 18px; }
   .hardbook { --bw: 200px; --bh: 286px; }
   .stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
-  .stat:nth-child(2) { border-right: 0; }
-  .stat:nth-child(1), .stat:nth-child(2) { border-bottom: 1px solid var(--line-soft); }
+  .stat { border-right: 1px solid var(--line-soft) !important; border-bottom: 1px solid var(--line-soft); }
+  .stat:nth-child(2n) { border-right: 0 !important; }
+  .stat:nth-last-child(-n+2) { border-bottom: 0; }
   .ledger-table { min-width: 640px; }
   .tab { padding: 14px 10px 12px; font-size: 12.5px; gap: 6px; }
   .tab-ico svg { width: 15px; height: 15px; }
@@ -1439,6 +1449,593 @@ main {
   .shelf-placard:hover { transform: rotate(1.2deg); }
 }
 
+
+/* ==========================================================================
+   SOUND TOGGLE
+   ========================================================================== */
+.sound-btn {
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 9px 13px 9px 11px; border-radius: 999px;
+  border: 1px solid rgba(244,236,217,.3);
+  background: rgba(244,236,217,.07);
+  color: #f0e7d2; font-size: 12.5px; font-weight: 500;
+  transition: background .2s, border-color .2s, color .2s;
+}
+.sound-btn:hover { background: rgba(244,236,217,.15); border-color: rgba(244,236,217,.5); }
+.sound-bars { display: inline-flex; align-items: flex-end; gap: 2.5px; height: 13px; }
+.sound-bars i {
+  width: 2.5px; border-radius: 1px; background: var(--brass-2);
+  animation: eq 1.1s ease-in-out infinite;
+}
+.sound-bars i:nth-child(1) { height: 6px; animation-delay: 0s; }
+.sound-bars i:nth-child(2) { height: 12px; animation-delay: .18s; }
+.sound-bars i:nth-child(3) { height: 8px; animation-delay: .36s; }
+@keyframes eq { 0%, 100% { transform: scaleY(.55); } 50% { transform: scaleY(1); } }
+.sound-btn[aria-pressed="false"] { color: #9fb3a1; }
+.sound-btn[aria-pressed="false"] .sound-bars i { animation: none; transform: scaleY(.4); background: #7d9183; }
+
+/* ==========================================================================
+   THE READER · a book lifts off the shelf and opens
+   ========================================================================== */
+.shelf { isolation: isolate; }
+
+body.reader-open { overflow: hidden; }
+.reader {
+  position: fixed; inset: 0;
+  z-index: 70;
+  display: flex; align-items: center; justify-content: center;
+  padding: 26px 18px 34px;
+}
+.reader[hidden] { display: none; }
+.reader-scrim {
+  position: absolute; inset: 0;
+  background: radial-gradient(120% 90% at 50% 40%, rgba(28,21,12,.52), rgba(24,17,9,.78));
+  backdrop-filter: blur(2.5px);
+  animation: fade .22s both;
+  cursor: zoom-out;
+}
+
+/* resting state of the "flying book" — the source spine */
+.spine.is-flying { opacity: .25; filter: saturate(.5); }
+
+.openbook {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: min(960px, 100%);
+  height: min(460px, 100%);
+  perspective: 1800px;
+  transform-style: preserve-3d;
+  animation: ob-land .52s cubic-bezier(.2,.9,.25,1) both;
+}
+@keyframes ob-land {
+  from { opacity: 0; transform: translateY(26px) scale(.86) rotateX(16deg); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* the book's own spine, standing between the two boards */
+.ob-spine {
+  position: absolute; left: 50%; top: 0; bottom: 0;
+  width: 26px; transform: translateX(-50%);
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--ob-c2, #1d3b2f), var(--ob-c1, #2a5241) 45%, var(--ob-c2, #1d3b2f));
+  box-shadow: inset 1px 0 0 rgba(255,255,255,.14), inset -1px 0 0 rgba(0,0,0,.4), 0 10px 24px -12px rgba(0,0,0,.7);
+  z-index: 3;
+}
+.ob-spine::before, .ob-spine::after {
+  content: ""; position: absolute; left: 0; right: 0; height: 4px;
+  background: repeating-linear-gradient(90deg, #f0e3c2 0 4px, #b49a68 4px 8px);
+  opacity: .8;
+}
+.ob-spine::before { top: 10px; }
+.ob-spine::after { bottom: 10px; }
+.ob-spine-text {
+  position: absolute; inset: 0;
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 7px; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--ob-foil, #d9a95b); opacity: .8;
+  overflow: hidden; white-space: nowrap;
+}
+
+/* the two page boards */
+.ob-page {
+  position: relative;
+  flex: 1 1 50%;
+  min-width: 0;
+  background:
+    linear-gradient(90deg, rgba(120,96,58,.10), transparent 12%),
+    repeating-linear-gradient(180deg, rgba(150,128,86,.05) 0 1px, transparent 1px 26px),
+    linear-gradient(180deg, #fdf8ea, #f5edd8);
+  box-shadow:
+    inset 0 0 0 1px rgba(160,138,96,.35),
+    0 26px 50px -26px rgba(20,14,6,.85);
+  overflow: hidden;
+  transform-style: preserve-3d;
+}
+.ob-left {
+  border-radius: 10px 2px 2px 10px;
+  transform-origin: right center;
+  animation: ob-open-left .62s cubic-bezier(.2,.85,.25,1) both .12s;
+  box-shadow: inset -18px 0 26px -22px rgba(60,44,18,.7), inset 0 0 0 1px rgba(160,138,96,.35), 0 26px 50px -26px rgba(20,14,6,.85);
+}
+.ob-right {
+  border-radius: 2px 10px 10px 2px;
+  transform-origin: left center;
+  animation: ob-open-right .62s cubic-bezier(.2,.85,.25,1) both .12s;
+  box-shadow: inset 18px 0 26px -22px rgba(60,44,18,.7), inset 0 0 0 1px rgba(160,138,96,.35), 0 26px 50px -26px rgba(20,14,6,.85);
+}
+@keyframes ob-open-left  { from { transform: rotateY(78deg); opacity: .3; } }
+@keyframes ob-open-right { from { transform: rotateY(-78deg); opacity: .3; } }
+
+.ob-inner {
+  position: relative;
+  height: 100%;
+  padding: 22px 24px 20px 26px;
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+}
+.ob-right .ob-inner { padding: 22px 26px 20px 24px; }
+.ob-kicker {
+  font-family: var(--mono); font-size: 9px; letter-spacing: .2em;
+  text-transform: uppercase; color: var(--brass);
+  padding-bottom: 10px; margin-bottom: 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.ob-folio {
+  position: absolute; right: 22px; top: 22px;
+  font-family: var(--mono); font-size: 9px; letter-spacing: .1em;
+  color: var(--ink-faint);
+}
+.ob-title {
+  font-family: var(--serif); font-size: clamp(19px, 2.4vw, 27px); font-weight: 700;
+  line-height: 1.1; color: var(--ink); margin-bottom: 5px;
+  max-height: 3.3em; overflow: hidden;
+}
+.ob-author { font-size: 13px; font-style: italic; color: var(--ink-soft); }
+.ob-meta {
+  margin: 16px 0 0; padding-top: 13px; border-top: 1px dashed var(--line);
+  display: grid; gap: 7px;
+}
+.ob-meta div { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.ob-meta dt {
+  font-family: var(--mono); font-size: 9px; letter-spacing: .13em;
+  text-transform: uppercase; color: var(--ink-faint);
+}
+.ob-meta dd { font-size: 12.5px; font-weight: 600; }
+.ob-meta dd.is-out { color: var(--red); }
+.ob-meta dd.is-ok { color: var(--ok); }
+.ob-blurb {
+  margin-top: auto; padding-top: 14px;
+  font-family: var(--serif); font-style: italic; font-size: 13px; line-height: 1.4;
+  color: var(--ink-soft);
+}
+.ob-loans { display: grid; gap: 8px; }
+.ob-loans li {
+  display: grid; grid-template-columns: 1fr auto; gap: 4px 10px;
+  padding: 9px 11px; border-radius: 5px;
+  background: rgba(185,138,62,.09);
+  border-left: 2px solid var(--green-3);
+  font-family: var(--mono); font-size: 11px;
+}
+.ob-loans li.late { border-left-color: var(--red); background: var(--red-soft); }
+.ob-loans li span:last-child { color: var(--ink-faint); text-align: right; }
+.ob-loans li.late span:last-child { color: var(--red); font-weight: 700; }
+.ob-loans li b { font-family: var(--sans); font-size: 12px; }
+.ob-note { margin-top: 10px; font-size: 11.5px; color: var(--ink-faint); }
+.ob-actions {
+  margin-top: auto; padding-top: 14px;
+  display: flex; flex-wrap: wrap; gap: 8px;
+}
+.ob-btn {
+  flex: 1 1 auto;
+  padding: 9px 14px; border-radius: 999px;
+  border: 1px solid var(--green-3); background: rgba(29,59,47,.06);
+  font-size: 12px; font-weight: 600; color: var(--green);
+  transition: background .16s, transform .16s;
+  text-align: center;
+}
+.ob-btn:hover { background: rgba(29,59,47,.14); transform: translateY(-1px); }
+.ob-btn[disabled] { opacity: .4; cursor: not-allowed; transform: none; }
+.ob-btn.solid { background: var(--green); border-color: var(--green); color: #f6efdc; }
+.ob-btn.solid:hover { background: var(--green-2); }
+.ob-stamp {
+  position: absolute; right: 20px; bottom: 74px;
+  font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .18em;
+  color: rgba(29,59,47,.34);
+  border: 2px solid rgba(29,59,47,.3); border-radius: 3px;
+  padding: 4px 9px; transform: rotate(-8deg);
+  pointer-events: none;
+}
+.ob-stamp.is-out { color: rgba(143,59,46,.42); border-color: rgba(143,59,46,.4); }
+
+.reader-close {
+  position: absolute; top: -6px; right: -4px; z-index: 5;
+  width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: #fdf8ea; color: var(--ink-soft);
+  border: 1px solid var(--line);
+  box-shadow: 0 6px 14px -8px rgba(0,0,0,.6);
+  transition: transform .16s, color .16s;
+}
+.reader-close:hover { transform: rotate(90deg); color: var(--red); }
+.reader-hint {
+  position: absolute; left: 0; right: 0; bottom: -24px;
+  text-align: center;
+  font-family: var(--mono); font-size: 8.5px; letter-spacing: .16em;
+  text-transform: uppercase; color: rgba(244,236,217,.55);
+}
+
+/* phone: the book lies flat, one page under the other */
+@media (max-width: 700px) {
+  .reader { padding: 10px 8px 18px; align-items: stretch; }
+  .openbook {
+    flex-direction: column;
+    height: min(100%, 720px);
+    animation: ob-land-sm .45s cubic-bezier(.2,.9,.25,1) both;
+  }
+  @keyframes ob-land-sm {
+    from { opacity: 0; transform: translateY(22px) scale(.94); }
+    to { opacity: 1; transform: none; }
+  }
+  .ob-spine { display: none; }
+  .ob-page { flex: 1 1 0; min-height: 0; }
+  .ob-left {
+    border-radius: 10px 10px 2px 2px;
+    animation: ob-open-sm-left .45s ease-out both .06s;
+    box-shadow: inset 0 -16px 22px -20px rgba(60,44,18,.7), inset 0 0 0 1px rgba(160,138,96,.35);
+  }
+  .ob-right {
+    border-radius: 2px 2px 10px 10px;
+    animation: ob-open-sm-right .45s ease-out both .12s;
+    box-shadow: inset 0 16px 22px -20px rgba(60,44,18,.7), inset 0 0 0 1px rgba(160,138,96,.35);
+  }
+  @keyframes ob-open-sm-left  { from { transform: translateY(-14px); opacity: .3; } }
+  @keyframes ob-open-sm-right { from { transform: translateY(14px); opacity: .3; } }
+  .ob-inner { padding: 16px 18px 14px; }
+  .ob-right .ob-inner { padding: 16px 18px 16px; }
+  .ob-kicker { margin-bottom: 9px; padding-bottom: 8px; }
+  .ob-title { font-size: 19px; }
+  .ob-meta { margin-top: 10px; padding-top: 9px; gap: 5px; }
+  .ob-blurb { display: none; }
+  .ob-loans li { padding: 7px 9px; font-size: 10.5px; }
+  .ob-note { margin-top: 8px; font-size: 11px; }
+  .ob-actions { padding-top: 10px; }
+  .ob-btn { padding: 8px 12px; font-size: 11.5px; }
+  .ob-stamp { display: none; }
+  .reader-close { top: 8px; right: 8px; }
+  .reader-hint { display: none; }
+}
+
+/* ==========================================================================
+   SOUND TOGGLE
+   ========================================================================== */
+@media (max-width: 640px) {
+  .sound-label { display: none; }
+  .sound-btn { padding: 9px 11px; }
+}
+
+
+/* ==========================================================================
+   THE LEDGER DESK · fines & waiting list
+   ========================================================================== */
+.ledger-split {
+  display: grid;
+  grid-template-columns: minmax(0,1.15fr) minmax(0,.85fr);
+  gap: 24px; align-items: start;
+  min-width: 0;
+}
+.ledger-col {
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: linear-gradient(180deg, #fbf6e9, #f4ebd7);
+  box-shadow: var(--shadow-card);
+  padding: 18px 18px 16px;
+}
+.col-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap;
+  padding-bottom: 12px; margin-bottom: 14px;
+  border-bottom: 1px dashed var(--line);
+}
+.col-head h3 { font-family: var(--serif); font-size: 20px; font-weight: 600; color: var(--green); }
+.col-note { font-size: 11.5px; color: var(--ink-faint); max-width: 180px; }
+.fine-rate {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--ink-faint);
+  border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px;
+  background: #fffdf7;
+}
+.fine-rate input {
+  width: 46px; padding: 3px 6px; border: 1px solid var(--line);
+  border-radius: 4px; background: transparent; text-align: center;
+  font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--ink);
+}
+.fine-rate input:focus { outline: none; border-color: var(--green-3); }
+
+/* one account card per borrower who owes money */
+.fine-card {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 4px 14px;
+  align-items: center;
+  padding: 12px 13px; margin-bottom: 10px;
+  border: 1px solid var(--line-soft); border-left: 3px solid var(--fine);
+  border-radius: var(--r-sm);
+  background: linear-gradient(180deg, #fffdf6, #faf3e2);
+  animation: rise .35s cubic-bezier(.2,.7,.2,1) both;
+}
+.fine-card:last-child { margin-bottom: 0; }
+.fine-who { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--ink); }
+.fine-detail { grid-column: 1 / -1; font-size: 11.5px; color: var(--ink-soft); }
+.fine-detail b { font-family: var(--mono); font-weight: 700; color: var(--fine); }
+.fine-amount {
+  font-family: var(--serif); font-size: 22px; font-weight: 700; color: var(--fine);
+  line-height: 1; text-align: right;
+}
+.fine-amount small { display: block; font-family: var(--mono); font-size: 8.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); font-weight: 400; margin-top: 3px; }
+.fine-actions { grid-column: 1 / -1; display: flex; gap: 8px; margin-top: 6px; }
+.fine-actions .mini-btn { flex: 1; text-align: center; }
+.mini-btn.settle { border-color: var(--fine); color: #6d4110; background: var(--fine-soft); }
+.mini-btn.settle:hover { background: #efd9b4; color: #4d2d08; }
+
+/* reservation queue */
+.queue-book { margin-bottom: 14px; }
+.queue-book:last-child { margin-bottom: 0; }
+.queue-title {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  margin-bottom: 7px;
+}
+.queue-title h4 { font-family: var(--serif); font-size: 16px; font-weight: 600; color: var(--ink); }
+.queue-title .q-code {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em;
+  color: var(--queue); background: var(--queue-soft);
+  padding: 2px 6px; border-radius: 3px;
+}
+.queue-people { display: grid; gap: 6px; }
+.queue-person {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px; border-radius: 5px;
+  background: rgba(74,93,122,.07);
+  border: 1px dashed rgba(74,93,122,.28);
+}
+.q-pos { flex: none; width: 20px; text-align: center; }
+.q-who { flex: 1 1 auto; min-width: 0; }
+.q-since { flex: none; }
+.q-drop { flex: none; }
+.q-pos {
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  color: var(--queue); text-align: center;
+}
+.queue-person .q-who { font-family: var(--mono); font-size: 11.5px; font-weight: 600; }
+.queue-person .q-since { font-size: 9.5px; color: var(--ink-faint); white-space: nowrap; letter-spacing: .02em; }
+.queue-person.next { background: rgba(74,93,122,.14); border-style: solid; }
+.queue-person.next .q-pos { color: #fff; background: var(--queue); border-radius: 50%; width: 20px; height: 20px; line-height: 20px; }
+.q-drop {
+  font-size: 14px; line-height: 1; color: var(--ink-faint);
+  padding: 3px 6px; border-radius: 4px;
+}
+.q-drop:hover { color: var(--red); background: var(--red-soft); }
+.q-claim {
+  grid-column: 1 / -1; font-size: 10.5px; color: var(--queue);
+  font-style: italic; padding-left: 31px;
+}
+.queue-add {
+  display: flex; gap: 8px; margin-top: 12px; padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+.queue-add select {
+  flex: 1; min-width: 0; padding: 8px 10px;
+  font-size: 12.5px; color: var(--ink);
+  background: #fffdf7; border: 1px solid var(--line); border-radius: var(--r-sm);
+}
+.queue-add input {
+  width: 120px; padding: 8px 10px;
+  font-size: 12.5px; color: var(--ink);
+  background: #fffdf7; border: 1px solid var(--line); border-radius: var(--r-sm);
+}
+.queue-add button {
+  padding: 8px 14px; border-radius: var(--r-sm);
+  background: var(--queue); color: #fff; font-size: 12px; font-weight: 600;
+  white-space: nowrap;
+}
+.queue-add button:hover { filter: brightness(1.1); }
+.q-breadcrumb {
+  margin-top: 10px; font-size: 11px; color: var(--ink-faint);
+  font-family: var(--mono); letter-spacing: .04em;
+}
+
+/* loan-period chips */
+.days-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.day-chip {
+  padding: 8px 13px; border-radius: 999px;
+  border: 1px solid var(--line); background: #fffdf7;
+  font-size: 12px; font-weight: 500; color: var(--ink-soft);
+  transition: all .15s;
+}
+.day-chip:hover { border-color: var(--brass); background: var(--brass-pale); }
+.day-chip.on { background: var(--green); border-color: var(--green); color: var(--paper); }
+
+/* amber badge on the Ledger tab */
+.tab-count.warn { background: var(--fine); }
+.tab.active .tab-count.warn { background: var(--fine); color: #fff; }
+.tab-count.warn[data-zero="true"] { background: rgba(92,80,64,.35); color: #f4ecd9; }
+
+/* ==========================================================================
+   LAMPS · after-hours switch + the dark reading room
+   ========================================================================== */
+.lamps-btn {
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 9px 13px; border-radius: 999px;
+  border: 1px solid rgba(244,236,217,.3);
+  background: rgba(244,236,217,.07);
+  color: #f0e7d2; font-size: 12.5px; font-weight: 500;
+  transition: background .2s, border-color .2s, color .2s;
+}
+.lamps-btn:hover { background: rgba(244,236,217,.15); border-color: rgba(244,236,217,.5); }
+.lamp-glyph { display: inline-flex; }
+.lamp-glyph svg { display: block; }
+.lamps-btn[aria-pressed="true"] { background: rgba(217,169,91,.22); border-color: rgba(217,169,91,.65); color: #f6dfae; }
+@media (max-width: 640px) {
+  .lamps-label { display: none; }
+  .lamps-btn { padding: 9px 11px; }
+  .ledger-split { grid-template-columns: minmax(0,1fr); gap: 16px; }
+  .ledger-col { padding: 14px; min-width: 0; }
+  .fine-card, .queue-person { min-width: 0; }
+  .col-head { gap: 8px; }
+  .fine-rate { padding: 4px 8px; }
+  .fine-card { grid-template-columns: 1fr auto; }
+  .queue-add { flex-wrap: wrap; }
+  .queue-add select { flex: 1 1 100%; }
+  .queue-add input { flex: 1; width: auto; }
+}
+
+/* ---------- after-hours palette ----------
+   Everything is token-driven, so the night theme is a variable swap plus a
+   lamp-glow wash over the page. Hard-coded paper colours below are remapped. */
+html[data-theme="night"] {
+  --paper:      #171510;
+  --paper-2:    #1d1a14;
+  --paper-3:    #262119;
+  --ink:        #efe3c8;
+  --ink-soft:   #c0b295;
+  --ink-faint:  #8b7f68;
+  --line:       #3b3428;
+  --line-soft:  #2e2921;
+  --green:      #a9c6ae;
+  --green-2:    #8fb69a;
+  --green-3:    #79a488;
+  --brass:      #d9a95b;
+  --brass-2:    #efc783;
+  --brass-pale: #2f2820;
+  --red:        #e08a74;
+  --red-soft:   #3a221d;
+  --ok:         #86c39c;
+  --fine:       #e5b061;
+  --fine-soft:  #3b2d18;
+  --queue:      #93abc9;
+  --queue-soft: #232c3a;
+  color-scheme: dark;
+}
+html[data-theme="night"] body {
+  background-color: #15130f;
+  background-image:
+    radial-gradient(900px 520px at 12% -6%, #2c2418 0%, transparent 58%),
+    radial-gradient(760px 460px at 92% 4%, #241e15 0%, transparent 55%),
+    var(--grain);
+  background-blend-mode: normal, normal, multiply;
+}
+html[data-theme="night"] body::after { box-shadow: inset 0 0 200px rgba(0,0,0,.6); }
+html[data-theme="night"] ::selection { background: #7a5a24; color: #fdf3dd; }
+
+/* the desk lamp: a warm pool of light over the shelves */
+html[data-theme="night"] main::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(46% 34% at 50% 34%, rgba(255,206,124,.10), transparent 70%),
+    radial-gradient(70% 50% at 50% 0%, rgba(255,186,92,.07), transparent 72%);
+}
+
+/* cards and paper surfaces */
+html[data-theme="night"] .stats,
+html[data-theme="night"] .card-form,
+html[data-theme="night"] .ledger,
+html[data-theme="night"] .ledger-col,
+html[data-theme="night"] .loan-card,
+html[data-theme="night"] .slip,
+html[data-theme="night"] .catalogue-card,
+html[data-theme="night"] .due-slip,
+html[data-theme="night"] .returned-note,
+html[data-theme="night"] .fine-card,
+html[data-theme="night"] .queue-person,
+html[data-theme="night"] .queue-add select,
+html[data-theme="night"] .queue-add input,
+html[data-theme="night"] .fine-rate,
+html[data-theme="night"] .fine-rate input,
+html[data-theme="night"] .day-chip,
+html[data-theme="night"] .mini-btn,
+html[data-theme="night"] .chip,
+html[data-theme="night"] .loan-chip,
+html[data-theme="night"] .field input,
+html[data-theme="night"] .index-field input,
+html[data-theme="night"] .palette-input input,
+html[data-theme="night"] .datalist-free,
+html[data-theme="night"] .palette-panel,
+html[data-theme="night"] .search-results {
+  background: linear-gradient(180deg, #221d15, #1b1710);
+  border-color: var(--line);
+}
+html[data-theme="night"] .field input,
+html[data-theme="night"] .index-field input,
+html[data-theme="night"] .palette-input input,
+html[data-theme="night"] .queue-add select,
+html[data-theme="night"] .queue-add input {
+  background: #12100c;
+  color: var(--ink);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.5);
+}
+html[data-theme="night"] .field input::placeholder,
+html[data-theme="night"] .index-field input::placeholder { color: #6e6453; }
+html[data-theme="night"] .ledger-table tbody tr:hover { background: rgba(217,169,91,.08); }
+html[data-theme="night"] .ledger-table thead th { background: #232018; color: #e9dcc0; }
+html[data-theme="night"] .copies-bar { background: #33291d; }
+html[data-theme="night"] .btn-primary {
+  background: linear-gradient(180deg, #3f5f4c, #2c463a); color: #f3e9d2;
+  box-shadow: 0 10px 22px -14px #000, inset 0 1px 0 rgba(255,255,255,.1);
+}
+html[data-theme="night"] .tab { color: var(--ink-soft); }
+html[data-theme="night"] .tab:hover { background: rgba(217,169,91,.1); }
+html[data-theme="night"] .tab.active { color: var(--brass-2); }
+html[data-theme="night"] .tabs { background: #1d1a13; }
+html[data-theme="night"] .tabs::after { background: linear-gradient(90deg, transparent, #1d1a13); }
+html[data-theme="night"] .shelf-wrap {
+  background:
+    linear-gradient(180deg, rgba(0,0,0,.28), transparent 34%),
+    repeating-linear-gradient(90deg, rgba(217,169,91,.05) 0 2px, transparent 2px 7px),
+    linear-gradient(180deg, #2a241a, #221d15);
+  border-color: #3a3125;
+}
+html[data-theme="night"] .lamp { background: radial-gradient(56% 44% at 50% -10%, rgba(255,206,124,.22), transparent 72%); }
+html[data-theme="night"] .shelf-title { color: var(--brass-2); }
+html[data-theme="night"] .shelf-sub,
+html[data-theme="night"] .shelf-legend,
+html[data-theme="night"] .shelf-empty { color: var(--ink-faint); }
+html[data-theme="night"] .shelf-placard {
+  background: linear-gradient(180deg, #2b2519, #221d14);
+  border-color: #443a28; color: var(--brass-2); box-shadow: 0 10px 18px -12px #000;
+}
+html[data-theme="night"] .shelf-board { background: linear-gradient(180deg, #4a3520, #32220f); }
+html[data-theme="night"] .shelf-rail { background: linear-gradient(180deg, #2c2519, #221c13); }
+html[data-theme="night"] .board-head { border-color: var(--line); }
+html[data-theme="night"] .board-note { border-left-color: var(--line); }
+html[data-theme="night"] .stat { border-color: var(--line-soft); }
+html[data-theme="night"] .ob-page {
+  background:
+    linear-gradient(90deg, rgba(0,0,0,.28), transparent 12%),
+    repeating-linear-gradient(180deg, rgba(217,169,91,.045) 0 1px, transparent 1px 26px),
+    linear-gradient(180deg, #211c14, #1a1610);
+  box-shadow: inset 0 0 0 1px rgba(217,169,91,.18), 0 26px 50px -26px #000;
+}
+html[data-theme="night"] .ob-left { box-shadow: inset -18px 0 26px -22px #000, inset 0 0 0 1px rgba(217,169,91,.18); }
+html[data-theme="night"] .ob-right { box-shadow: inset 18px 0 26px -22px #000, inset 0 0 0 1px rgba(217,169,91,.18); }
+html[data-theme="night"] .ob-stamp { color: rgba(169,198,174,.4); border-color: rgba(169,198,174,.32); }
+html[data-theme="night"] .ob-stamp.is-out { color: rgba(224,138,116,.5); border-color: rgba(224,138,116,.45); }
+html[data-theme="night"] .reader-close { background: #262117; border-color: var(--line); color: var(--ink); }
+html[data-theme="night"] .palette-backdrop { background: rgba(6,5,3,.72); }
+html[data-theme="night"] .toast {
+  background: #241e15; color: #f0e4c6; border-color: var(--line); border-left-color: var(--brass);
+}
+html[data-theme="night"] .toast.error { color: #f0b6a4; border-left-color: var(--red); }
+html[data-theme="night"] .masthead { background: radial-gradient(120% 160% at 50% -40%, #2a3f33 0%, transparent 62%), #15130f; }
+html[data-theme="night"] .colophon { background: #12100c; }
+html[data-theme="night"] .ledger-empty, html[data-theme="night"] .slip-empty { color: var(--ink-faint); }
+
+/* let the theme change breathe */
+body, .masthead, .tabs, .stats, .shelf-wrap, .card-form, .ledger, .ledger-col,
+.slip, .loan-card, .ob-page, .palette-panel, .toast, .stat, input, .mini-btn {
+  transition: background-color .45s ease, border-color .45s ease, color .35s ease, box-shadow .45s ease;
+}
+
 /* motion preferences */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
@@ -1476,6 +2073,18 @@ main {
         <p class="clock-day" id="clockDay">—</p>
         <p class="clock-date" id="clockDate">—</p>
       </div>
+      <button class="lamps-btn" id="themeBtn" type="button" aria-pressed="false"
+              aria-label="Switch to after-hours lighting" title="Switch the lamps">
+        <span class="lamp-glyph" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="15" height="15"><path d="M12 3.2v1.6M5.6 6.3l1.2 1.2M18.4 6.3l-1.2 1.2M3.5 12.2h1.7M18.8 12.2h1.7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M8 20.2h8M9 17.6h6M12 17.6V9.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M9.4 9.8a2.6 2.6 0 0 1 5.2 0z" fill="currentColor"/></svg>
+        </span>
+        <span class="lamps-label" id="themeLabel">Lamps up</span>
+      </button>
+      <button class="sound-btn" id="soundBtn" type="button" aria-pressed="true"
+              aria-label="Mute interface sounds" title="Mute interface sounds">
+        <span class="sound-bars" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="sound-label" id="soundLabel">Sound on</span>
+      </button>
       <button class="palette-btn" id="paletteBtn" type="button" aria-label="Open quick search">
         <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         <span>Quick search</span>
@@ -1513,6 +2122,10 @@ main {
       <span class="tab-ico" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M20 7H7M11 3.5 7 7l4 3.5"/><path d="M4 17h13M13 13.5 17 17l-4 3.5"/></svg>
       </span>Return</button>
+    <button class="tab" data-section="ledgerdesk" aria-current="false">
+      <span class="tab-ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M6.5 3.5h11a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 19V5a1.5 1.5 0 0 1 1.5-1.5Z"/><path d="M8.5 8h7M8.5 11.5h7M8.5 15h3.5"/></svg>
+      </span>Ledger <span class="tab-count warn" id="fineCount">0</span></button>
     <button class="tab" data-section="issued" aria-current="false">
       <span class="tab-ico" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M6 3.5h9l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1Z"/><path d="M14.5 3.7V9h5.2"/><path d="M8.5 13h7M8.5 16.5h5"/></svg>
@@ -1559,6 +2172,16 @@ main {
         <p class="stat-value" id="returnedCount">0</p>
         <p class="stat-foot">all-time, this browser</p>
       </article>
+      <article class="stat">
+        <p class="stat-label">Fines outstanding</p>
+        <p class="stat-value" id="finesOwed">₹0</p>
+        <p class="stat-foot" id="finesFoot">nothing overdue</p>
+      </article>
+      <article class="stat">
+        <p class="stat-label">Waiting list</p>
+        <p class="stat-value" id="waitingCount">0</p>
+        <p class="stat-foot">readers in the queue</p>
+      </article>
     </div>
 
     <div class="board">
@@ -1567,7 +2190,7 @@ main {
         <div class="shelf-head">
           <div>
             <h3 class="shelf-title">The shelf</h3>
-            <p class="shelf-sub">Each spine is one title. Thickness = copies owned. Click a spine to open its card.</p>
+            <p class="shelf-sub">Each spine is one title — thickness = copies owned. Click a book and it lifts off the shelf, then opens to its borrower's slip.</p>
           </div>
           <div class="shelf-legend" aria-hidden="true">
             <span><i class="dot dot-avail"></i>On shelf</span>
@@ -1766,9 +2389,17 @@ main {
           <input id="issueStudentId" autocomplete="off" required list="studentIds">
           <p class="field-echo" id="issueStudentEcho">Any unique ID — e.g. S-1042.</p>
         </div>
+        <div class="field">
+          <label for="issueDays">Loan period <span>fine starts after the due date</span></label>
+          <div class="days-row" id="daysRow">
+            <button type="button" class="day-chip on" data-days="14">14 days · standard</button>
+            <button type="button" class="day-chip" data-days="7">7 days · short</button>
+            <button type="button" class="day-chip" data-days="28">28 days · staff</button>
+          </div>
+        </div>
         <div class="form-foot">
           <button type="submit" class="btn-primary">Issue this book</button>
-          <p class="form-hint">Due date is logged 14 days out; overdue loans get a red tag.</p>
+          <p class="form-hint" id="issueHint">Overdue copies are charged ₹<b>2</b> per day, per copy.</p>
         </div>
       </form>
 
@@ -1827,6 +2458,46 @@ main {
     </div>
   </section>
 
+  <!-- ============ LEDGER DESK · fines + waiting list ============ -->
+  <section id="ledgerdesk" class="section">
+    <div class="board-head">
+      <div>
+        <p class="eyebrow">Accounts &amp; reservations</p>
+        <h2>The ledger desk</h2>
+      </div>
+      <p class="board-note" id="ledgerNote">—</p>
+    </div>
+
+    <div class="ledger-split">
+      <div class="ledger-col">
+        <div class="col-head">
+          <div>
+            <p class="eyebrow">Overdue accounts</p>
+            <h3>Fines payable</h3>
+          </div>
+          <label class="fine-rate">
+            <span>₹ per day</span>
+            <input type="number" id="fineRate" min="0" max="100" step="1" value="2" inputmode="numeric">
+          </label>
+        </div>
+        <div class="fine-list" id="fineList"></div>
+        <p class="ledger-empty" id="fineEmpty" hidden>No fines outstanding — every copy is back on time.</p>
+      </div>
+
+      <div class="ledger-col">
+        <div class="col-head">
+          <div>
+            <p class="eyebrow">Reservations</p>
+            <h3>Waiting list</h3>
+          </div>
+          <p class="col-note">First in line gets the next returned copy.</p>
+        </div>
+        <div class="queue-list" id="queueList"></div>
+        <p class="ledger-empty" id="queueEmpty" hidden>Nobody is waiting. Shelves and readers are in harmony.</p>
+      </div>
+    </div>
+  </section>
+
   <!-- ============ ISSUED ============ -->
   <section id="issued" class="section">
     <div class="board-head">
@@ -1863,6 +2534,42 @@ main {
 <datalist id="bookCodes"></datalist>
 <datalist id="studentIds"></datalist>
 
+<!-- ============ OPENED BOOK (fixed overlay) ============ -->
+<div class="reader" id="reader" hidden>
+  <div class="reader-scrim" data-close-reader></div>
+  <div class="openbook" id="openbook" role="dialog" aria-modal="true" aria-label="Opened book">
+    <div class="ob-spine" aria-hidden="true"><span class="ob-spine-text"></span></div>
+    <div class="ob-page ob-left">
+      <div class="ob-inner">
+        <p class="ob-kicker">The Reading Room · card catalogue</p>
+        <p class="ob-folio" data-folio>No. —</p>
+        <h3 class="ob-title" id="obTitle">—</h3>
+        <p class="ob-author" id="obAuthor">—</p>
+        <dl class="ob-meta">
+          <div><dt>Accession</dt><dd id="obCode">—</dd></div>
+          <div><dt>Published</dt><dd id="obYear">—</dd></div>
+          <div><dt>Copies</dt><dd id="obCopies">—</dd></div>
+          <div><dt>Status</dt><dd id="obStatus">—</dd></div>
+        </dl>
+        <p class="ob-blurb" id="obBlurb"></p>
+      </div>
+    </div>
+    <div class="ob-page ob-right">
+      <div class="ob-inner">
+        <p class="ob-kicker">Borrower's slip</p>
+        <ul class="ob-loans" id="obLoans"></ul>
+        <p class="ob-note" id="obNote"></p>
+        <div class="ob-actions" id="obActions"></div>
+        <p class="ob-stamp" id="obStamp" aria-hidden="true">ON SHELF</p>
+      </div>
+    </div>
+    <button class="reader-close" type="button" data-close-reader aria-label="Close the book">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+    <p class="reader-hint" aria-hidden="true">Esc or click outside to close</p>
+  </div>
+</div>
+
 <!-- ============ QUICK SEARCH PALETTE ============ -->
 <div class="palette" id="palette" hidden>
   <div class="palette-backdrop" data-close-palette></div>
@@ -1889,10 +2596,17 @@ const LOAN_DAYS = 14;
 const STORE_BOOKS = "libraryBooks";
 const STORE_ISSUES = "libraryIssues";
 const STORE_SEEDED = "readingRoomSeeded";
+const STORE_FINES = "readingRoomFines";
+const STORE_QUEUE = "readingRoomQueue";
+const STORE_RATE = "readingRoomFineRate";
+const STORE_THEME = "readingRoomTheme";
 
 /* ---------- data ---------- */
 let books = JSON.parse(localStorage.getItem(STORE_BOOKS) || "{}");
 let issueRecords = JSON.parse(localStorage.getItem(STORE_ISSUES) || "[]");
+let fines = JSON.parse(localStorage.getItem(STORE_FINES) || "[]");   // settled accounts
+let queue = JSON.parse(localStorage.getItem(STORE_QUEUE) || "[]");   // reservations
+let fineRate = Number(localStorage.getItem(STORE_RATE) || 2);        // ₹ per day, per copy
 
 let selectedBookId = null;
 let currentSection = "dashboard";
@@ -1903,6 +2617,9 @@ const $ = (id) => document.getElementById(id);
 function saveData() {
   localStorage.setItem(STORE_BOOKS, JSON.stringify(books));
   localStorage.setItem(STORE_ISSUES, JSON.stringify(issueRecords));
+  localStorage.setItem(STORE_FINES, JSON.stringify(fines));
+  localStorage.setItem(STORE_QUEUE, JSON.stringify(queue));
+  localStorage.setItem(STORE_RATE, String(fineRate));
 }
 
 function escapeHTML(value) {
@@ -1916,6 +2633,7 @@ function readText(value) { return String(value || "").trim(); }
 function showMessage(message, isError = false) {
   const el = $("message");
   if (!message) { el.classList.remove("show"); return; }
+  if (isError) Sound.error();
   el.textContent = message;
   el.classList.toggle("error", isError);
   el.classList.remove("show");
@@ -1961,6 +2679,78 @@ function loansOfStudent(studentId) {
 }
 
 function isOverdue(record) { return record.dueOn ? record.dueOn < todayISO() : false; }
+
+function daysLate(record) {
+  if (!record.dueOn) return 0;
+  return Math.max(0, daysBetween(todayISO(), record.dueOn));
+}
+
+function fineFor(record) {
+  return daysLate(record) * fineRate;
+}
+
+function settledFor(studentId) {
+  return fines.filter((f) => f.studentId === studentId).reduce((t, f) => t + f.amount, 0);
+}
+
+/** one account per borrower: every overdue copy they hold, added up */
+function openAccounts() {
+  const map = new Map();
+  issueRecords.filter((r) => !r.returned && isOverdue(r)).forEach((r) => {
+    const book = books[r.bookId];
+    const key = r.studentId;
+    if (!map.has(key)) map.set(key, { studentId: key, amount: 0, days: 0, items: [] });
+    const acct = map.get(key);
+    const amount = fineFor(r);
+    acct.amount += amount;
+    acct.days = Math.max(acct.days, daysLate(r));
+    acct.items.push({ bookId: r.bookId, title: book ? book.title : r.bookId, days: daysLate(r), amount });
+  });
+  return [...map.values()].sort((a, b) => b.amount - a.amount);
+}
+
+function totalOutstanding() {
+  return openAccounts().reduce((t, a) => t + a.amount, 0);
+}
+
+/* ---------- reservation queue ---------- */
+function queueFor(bookId) {
+  return queue.filter((q) => q.bookId === bookId)
+    .sort((a, b) => a.addedAt.localeCompare(b.addedAt));
+}
+
+function queueElsewhere(studentId) {
+  return queue.filter((q) => q.studentId.toLowerCase() === studentId.toLowerCase());
+}
+
+function addToQueue(bookId, studentId) {
+  if (!books[bookId] || !studentId) return { ok: false, msg: "Pick a book and a borrower." };
+  if (!bookId) return { ok: false, msg: "Pick a book first." };
+  if (queueFor(bookId).some((q) => q.studentId.toLowerCase() === studentId.toLowerCase())) {
+    return { ok: false, msg: `${studentId} is already waiting for that copy.` };
+  }
+  if (queueElsewhere(studentId).length >= 3) {
+    return { ok: false, msg: `${studentId} already has three reservations — collect one first.` };
+  }
+  queue.push({ bookId, studentId, addedAt: new Date().toISOString() });
+  saveData();
+  updateDashboard();
+  return { ok: true, msg: `${studentId} queued for ${bookId}.` };
+}
+
+function removeFromQueue(bookId, studentId) {
+  queue = queue.filter((q) => !(q.bookId === bookId && q.studentId === studentId));
+  saveData();
+  updateDashboard();
+}
+
+/** the first person in line gets first refusal on a returned copy */
+function claimNextInQueue(bookId) {
+  const next = queueFor(bookId)[0];
+  if (!next) return null;
+  removeFromQueue(bookId, next.studentId);
+  return next;
+}
 
 /* Eight case-binding styles. Each is a generated cloth/leather texture that is
    tinted per book, so the shelf looks like a real collection rather than a
@@ -2010,16 +2800,123 @@ const coverArt = (key) =>
     ? `url("${COVER_ART[key] || COVER_ART.forest}")`
     : `url("${ASSET_BASE}assets/covers/opt/${key}.webp")`;
 
+
+/* ==========================================================================
+   SOUND · every noise is synthesised with WebAudio, so there are no audio
+   files to download and nothing to 404 in the single-file build.
+   ========================================================================== */
+const Sound = (() => {
+  const KEY = "readingRoomSound";
+  let enabled = localStorage.getItem(KEY) !== "off";
+  let ctx = null;
+  let noiseBuf = null;
+
+  function context() {
+    if (!enabled) return null;
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    if (!ctx) {
+      ctx = new Ctx();
+      const len = Math.floor(ctx.sampleRate * 0.5);
+      noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const data = noiseBuf.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    }
+    if (ctx.state === "suspended") ctx.resume();
+    return ctx;
+  }
+
+  const env = (gain, t0, attack, peak, decay) => {
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(peak, t0 + attack);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + attack + decay);
+  };
+
+  function noise({ dur = 0.2, type = "bandpass", freq = 1800, q = 0.9, peak = 0.2, delay = 0 }) {
+    const c = context(); if (!c) return;
+    const t0 = c.currentTime + delay;
+    const src = c.createBufferSource(); src.buffer = noiseBuf;
+    const filter = c.createBiquadFilter(); filter.type = type; filter.frequency.value = freq; filter.Q.value = q;
+    const gain = c.createGain(); env(gain, t0, 0.012, peak, dur);
+    src.connect(filter); filter.connect(gain); gain.connect(c.destination);
+    src.start(t0); src.stop(t0 + dur + 0.05);
+  }
+
+  function tone({ freq = 440, dur = 0.12, type = "sine", peak = 0.08, delay = 0, glideTo = null }) {
+    const c = context(); if (!c) return;
+    const t0 = c.currentTime + delay;
+    const osc = c.createOscillator(); osc.type = type; osc.frequency.setValueAtTime(freq, t0);
+    if (glideTo) osc.frequency.exponentialRampToValueAtTime(glideTo, t0 + dur);
+    const gain = c.createGain(); env(gain, t0, 0.01, peak, dur);
+    osc.connect(gain); gain.connect(c.destination);
+    osc.start(t0); osc.stop(t0 + dur + 0.05);
+  }
+
+  return {
+    get enabled() { return enabled; },
+    toggle() {
+      enabled = !enabled;
+      localStorage.setItem(KEY, enabled ? "on" : "off");
+      if (enabled) this.tick();
+      return enabled;
+    },
+    /** revive audio on the first real gesture (browsers block it otherwise) */
+    wake() { context(); },
+    tick() { noise({ dur: 0.035, freq: 3400, q: 2.4, peak: 0.07 }); },
+    page() {          // a page turning: two soft paper swishes
+      noise({ dur: 0.16, type: "highpass", freq: 2200, peak: 0.13 });
+      noise({ dur: 0.2, freq: 1200, q: 1.2, peak: 0.1, delay: 0.09 });
+    },
+    open() {          // a hardcover swinging open: creak + settle
+      noise({ dur: 0.3, freq: 620, q: 1.6, peak: 0.16 });
+      tone({ freq: 150, glideTo: 96, dur: 0.26, peak: 0.07 });
+      noise({ dur: 0.14, freq: 2000, peak: 0.1, delay: 0.17 });
+    },
+    close() {
+      noise({ dur: 0.18, freq: 900, q: 1.4, peak: 0.13 });
+      tone({ freq: 110, glideTo: 70, dur: 0.18, peak: 0.06, delay: 0.03 });
+    },
+    stamp() {         // the ledger stamp: a thud + a little click
+      tone({ freq: 90, glideTo: 42, dur: 0.16, type: "triangle", peak: 0.3 });
+      noise({ dur: 0.09, freq: 420, type: "lowpass", peak: 0.24 });
+      tone({ freq: 1200, dur: 0.05, type: "square", peak: 0.03, delay: 0.02 });
+    },
+    error() {
+      tone({ freq: 300, glideTo: 190, dur: 0.2, type: "triangle", peak: 0.11 });
+    },
+    slip() {          // card pulled from the drawer
+      noise({ dur: 0.13, type: "highpass", freq: 2600, peak: 0.1 });
+    },
+    whoosh() {        // a book sliding back onto the shelf
+      noise({ dur: 0.26, freq: 700, q: 0.7, peak: 0.12 });
+      tone({ freq: 70, dur: 0.18, peak: 0.1, delay: 0.06 });
+    }
+  };
+})();
+
+/* wire the toggle in the masthead */
+function syncSoundButton() {
+  const btn = $("soundBtn");
+  if (!btn) return;
+  btn.setAttribute("aria-pressed", String(Sound.enabled));
+  btn.setAttribute("aria-label", Sound.enabled ? "Mute interface sounds" : "Turn interface sound on");
+  btn.title = Sound.enabled ? "Mute interface sounds" : "Turn interface sound on";
+  $("soundLabel").textContent = Sound.enabled ? "Sound on" : "Muted";
+}
+
 /* ==========================================================================
    NAVIGATION
    ========================================================================== */
 const SECTION_LABELS = {
   dashboard: "Dashboard", addBook: "Add Book", books: "Inventory",
-  search: "Search", issue: "Issue", return: "Return", issued: "On Loan"
+  search: "Search", issue: "Issue", return: "Return", issued: "On Loan",
+  ledgerdesk: "Ledger"
 };
 
 function showSection(sectionId) {
+  const changed = sectionId !== currentSection;
   currentSection = sectionId;
+  if (changed) Sound.slip();
   document.querySelectorAll(".section").forEach((s) => s.classList.remove("active"));
   const target = $(sectionId);
   if (target) target.classList.add("active");
@@ -2044,6 +2941,7 @@ function showSection(sectionId) {
 
   if (sectionId === "books") displayAllBooks();
   if (sectionId === "issued") displayIssuedBooks();
+  if (sectionId === "ledgerdesk") renderLedgerDesk();
   if (sectionId === "dashboard") { updateDashboard(); renderShelf(); renderSlip(); }
   if (sectionId === "return") renderLoanFinder();
   if (sectionId === "search") renderAuthorChips();
@@ -2085,6 +2983,18 @@ function updateDashboard() {
   setStat("returnedCount", returned);
 
   $("loanCount").textContent = String(active);
+
+  /* money + reservations */
+  const owed = totalOutstanding();
+  const accounts = openAccounts();
+  $("finesOwed").textContent = "₹" + owed;
+  $("finesFoot").textContent = owed
+    ? `${accounts.length} account${accounts.length === 1 ? "" : "s"} · ₹${fineRate}/day`
+    : "nothing overdue";
+  $("waitingCount").textContent = String(queue.length);
+  const badge = $("fineCount");
+  badge.textContent = String(accounts.length);
+  badge.dataset.zero = String(accounts.length === 0);
 }
 
 /* ==========================================================================
@@ -2160,10 +3070,10 @@ function renderShelf() {
 
   shelf.querySelectorAll(".spine").forEach((spine) => {
     spine.addEventListener("click", () => {
-      selectedBookId = spine.dataset.book;
-      shelf.querySelectorAll(".spine").forEach((s) => s.classList.remove("selected"));
-      spine.classList.add("selected");
-      renderSlip();
+      Sound.tick();
+      flySpineToReader(spine.dataset.book);
+      // let the book lift, then swing open
+      setTimeout(() => openBook(spine.dataset.book), 300);
     });
   });
 }
@@ -2212,6 +3122,178 @@ function renderSlip() {
     $("returnStudentId").focus();
   };
 }
+
+
+/* ==========================================================================
+   THE READER · click a spine and the book lifts off the shelf, then opens
+   ========================================================================== */
+const BLURBS = {
+  forest:   "A well-travelled copy — the spine has softened with use.",
+  oxblood:  "Bound in oxblood cloth with a gold rule; still tight in the hinge.",
+  navy:     "Full navy leather, gilt corners. Handle with a clean conscience.",
+  tan:      "Natural buckram, the colour of strong tea.",
+  plum:     "Aubergine cloth with rose-gold tooling.",
+  rust:     "Sienna cloth, faintly sunned along the top board.",
+  teal:     "Sea-green cloth; the foil has worn pale at the head.",
+  charcoal: "Charcoal boards with a blind rule. Quiet and serious."
+};
+
+let readerOpenFor = null;
+let restoreFocusTo = null;
+
+function flySpineToReader(bookId) {
+  // find the spine without relying on CSS.escape (not in older browsers / jsdom)
+  const spine = Array.from(document.querySelectorAll(".spine"))
+    .find((el) => el.dataset.book === bookId);
+  if (!spine) return;
+  spine.classList.add("is-flying");
+  // a short arc: the book lifts, drifts toward the centre of the panel
+  const reader = $("reader");
+  const from = spine.getBoundingClientRect();
+  const to = reader.getBoundingClientRect();
+  const dx = (to.left + to.width / 2) - (from.left + from.width / 2);
+  const dy = (to.top + to.height / 2) - (from.top + from.height / 2);
+  spine.animate(
+    [
+      { transform: "translate(0,0) rotate(0deg)", offset: 0 },
+      { transform: `translate(${dx * 0.6}px, ${dy * 0.42 - 24}px) rotate(-6deg)`, offset: 0.6 },
+      { transform: `translate(${dx}px, ${dy * 0.8}px) rotate(-2deg) scale(.9)`, offset: 1 }
+    ],
+    { duration: 340, easing: "cubic-bezier(.3,.8,.3,1)", fill: "forwards" }
+  );
+}
+
+function openBook(bookId) {
+  const book = books[bookId];
+  if (!book) return;
+  selectedBookId = bookId;
+
+  const binding = bindingFor(book.id);
+  const reader = $("reader");
+  const rig = $("openbook");
+  restoreFocusTo = document.activeElement;
+
+  if (readerOpenFor) Sound.close();
+  reader.hidden = false;
+  readerOpenFor = bookId;
+  document.body.classList.add("reader-open");
+  Sound.wake();
+  Sound.open();
+
+  rig.style.setProperty("--ob-c1", binding.c1);
+  rig.style.setProperty("--ob-c2", binding.c2);
+  rig.style.setProperty("--ob-foil", binding.foil);
+  rig.querySelector(".ob-spine-text").textContent = book.id;
+
+  const loans = activeLoansFor(book.id);
+  const owns = ownedCopies(book);
+  $("obTitle").textContent = book.title;
+  $("obAuthor").textContent = book.author;
+  $("obCode").textContent = book.id;
+  $("obYear").textContent = book.year;
+  $("obCopies").textContent = `${book.availableCopies} of ${owns} on shelf`;
+  const status = $("obStatus");
+  status.textContent = book.availableCopies > 0 ? "On shelf" : "All copies out";
+  status.className = book.availableCopies > 0 ? "is-ok" : "is-out";
+  $("obBlurb").textContent = BLURBS[binding.key] || "";
+  rig.querySelectorAll("[data-folio]").forEach((el) => {
+    el.textContent = "No. " + book.id.replace(/[^0-9]/g, "").padStart(3, "0");
+  });
+
+  const stamp = $("obStamp");
+  stamp.textContent = book.availableCopies > 0 ? "ON SHELF" : "ALL OUT";
+  stamp.classList.toggle("is-out", book.availableCopies === 0);
+
+  const list = $("obLoans");
+  if (loans.length === 0) {
+    list.innerHTML = '<li><span>Nothing out at the moment.</span><span></span></li>';
+  } else {
+    list.innerHTML = loans.map((r) => {
+      const late = isOverdue(r);
+      return `<li class="${late ? "late" : ""}">
+        <span><b>${escapeHTML(r.studentId)}</b></span>
+        <span>${late ? "overdue " + Math.abs(daysBetween(r.dueOn, todayISO())) + "d" : "due " + prettyDate(r.dueOn)}</span>
+        <span>issued ${r.issuedOn ? prettyDate(r.issuedOn) : "—"}</span>
+        <span>${late ? "collect now" : "on time"}</span>
+      </li>`;
+    }).join("");
+  }
+
+  $("obNote").textContent = loans.length
+    ? "A copy is held for each borrower until it comes back."
+    : (book.availableCopies === 0 ? "Every copy is on loan — check the waiting shelf." : "Ready to borrow from the desk.");
+
+  const actions = $("obActions");
+  const waitingForThis = queueFor(book.id).length;
+  actions.innerHTML = `
+    <button class="ob-btn solid" type="button" data-act="issue" ${book.availableCopies === 0 ? "disabled" : ""}>Issue a copy</button>
+    <button class="ob-btn" type="button" data-act="return" ${loans.length ? "" : "disabled"}>Log a return</button>
+    <button class="ob-btn" type="button" data-act="reserve">${waitingForThis ? `Queue (${waitingForThis})` : "Reserve"}</button>
+    <button class="ob-btn" type="button" data-act="search">Find in index</button>`;
+  actions.querySelectorAll("button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const act = btn.dataset.act;
+      if (act === "issue") {
+        closeBook(true);
+        showSection("issue");
+        $("issueBookId").value = book.id;
+        $("issueBookId").dispatchEvent(new Event("input"));
+        $("issueStudentId").focus();
+      }
+      if (act === "return") {
+        closeBook(true);
+        showSection("return");
+        $("returnBookId").value = book.id;
+        $("returnStudentId").value = loans[0].studentId;
+      }
+      if (act === "reserve") {
+        closeBook(true);
+        showSection("ledgerdesk");
+        const sel = document.getElementById("queueBook");
+        if (sel) sel.value = book.id;
+        const who = document.getElementById("queueWho");
+        if (who) who.focus();
+      }
+      if (act === "search") {
+        closeBook(true);
+        showSection("search");
+        $("searchQuery").value = book.title;
+        runSearch(book.title);
+      }
+    });
+  });
+
+  renderSlip();
+  document.querySelectorAll(".spine").forEach((sp) => sp.classList.toggle("selected", sp.dataset.book === bookId));
+  setTimeout(() => rig.querySelector(".reader-close").focus(), 120);
+}
+
+function closeBook(silent = false) {
+  const reader = $("reader");
+  if (reader.hidden) return;
+  reader.hidden = true;
+  document.body.classList.remove("reader-open");
+  document.querySelectorAll(".spine.is-flying").forEach((sp) => sp.classList.remove("is-flying"));
+  if (typeof Element.prototype.getAnimations === "function") {
+    document.querySelectorAll(".spine").forEach((sp) => {
+      sp.getAnimations().forEach((a) => a.cancel());
+    });
+  }
+  if (!silent) Sound.close();
+  readerOpenFor = null;
+  if (restoreFocusTo && restoreFocusTo.focus) restoreFocusTo.focus();
+}
+
+$("reader").addEventListener("click", (e) => {
+  if (e.target.closest("[data-close-reader]")) closeBook();
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && readerOpenFor) { closeBook(); }
+});
+
+/* A fixed overlay re-centres itself, so never close on resize — mobile
+   browsers fire resize when the address bar collapses. */
 
 /* ==========================================================================
    ADD BOOK
@@ -2293,6 +3375,7 @@ $("addBookForm").addEventListener("submit", function (event) {
   selectedBookId = id;
   renderSlip();
 
+  Sound.stamp();
   showMessage(`“${title}” stamped into the ledger as ${id}.`);
 });
 
@@ -2474,7 +3557,7 @@ function renderAuthorChips() {
    ========================================================================== */
 function renderDuePreview() {
   const book = books[readText($("issueBookId").value).toUpperCase()];
-  const date = addDaysISO(LOAN_DAYS);
+  const date = addDaysISO(loanDays || LOAN_DAYS);
   $("dueDate").textContent = prettyDate(date).toUpperCase();
 
   if (book) {
@@ -2505,6 +3588,16 @@ function echoIssueStudent() {
   echo.textContent = loans ? `${loans} book${loans === 1 ? "" : "s"} currently out to ${raw}.` : `New borrower ${raw}.`;
   echo.classList.add("good");
 }
+
+let loanDays = 14;
+$("daysRow").querySelectorAll(".day-chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    loanDays = Number(chip.dataset.days);
+    $("daysRow").querySelectorAll(".day-chip").forEach((c) => c.classList.toggle("on", c === chip));
+    Sound.tick();
+    renderDuePreview();
+  });
+});
 
 $("issueBookId").addEventListener("input", echoIssueBook);
 $("issueStudentId").addEventListener("input", echoIssueStudent);
@@ -2542,7 +3635,19 @@ $("issueForm").addEventListener("submit", function (event) {
     return;
   }
 
-  const dueOn = addDaysISO(LOAN_DAYS);
+  // honour the waiting list: only the reader at the head of the queue may take it
+  const line = queueFor(bookId);
+  if (line.length && line[0].studentId.toLowerCase() !== studentId.toLowerCase()) {
+    Sound.error();
+    showMessage(`That copy is held for ${line[0].studentId}, first in the queue. Collect it under their ID, or remove them from the list.`, true);
+    return;
+  }
+
+  if (queueElsewhere(studentId).some((q) => q.bookId === bookId)) {
+    removeFromQueue(bookId, studentId);
+  }
+
+  const dueOn = addDaysISO(loanDays || LOAN_DAYS);
   issueRecords.push({
     bookId,
     studentId,
@@ -2565,7 +3670,9 @@ $("issueForm").addEventListener("submit", function (event) {
   refreshDatalists();
   renderLoanFinder();
 
-  showMessage(`Issued to ${studentId}. ${prettyDate(dueOn)} is the due date.`);
+  Sound.stamp();
+  const stillWaiting = queueFor(bookId).length;
+  showMessage(`Issued to ${studentId}. ${prettyDate(dueOn)} is the due date.${stillWaiting ? ` ${stillWaiting} still waiting.` : ""}`);
 });
 
 /* ==========================================================================
@@ -2621,9 +3728,14 @@ $("returnForm").addEventListener("submit", function (event) {
     return;
   }
 
+  const late = isOverdue(record);
+  const owed = late ? fineFor(record) : 0;
+
   record.returned = true;
   record.returnedOn = todayISO();
   book.availableCopies++;
+
+  const nextInLine = claimNextInQueue(bookId);
 
   saveData();
   this.reset();
@@ -2635,8 +3747,160 @@ $("returnForm").addEventListener("submit", function (event) {
   refreshDatalists();
   renderLoanFinder();
 
-  showMessage(`“${book.title}” returned. ${book.availableCopies} on shelf now.`);
+  Sound.stamp();
+  if (nextInLine) {
+    Sound.slip();
+    showMessage(`“${book.title}” returned — held for ${nextInLine.studentId}, first in the queue.${owed ? ` ₹${owed} fine still owing.` : ""}`);
+  } else if (owed) {
+    Sound.stamp();
+    showMessage(`“${book.title}” returned · ₹${owed} fine now owing (${daysLate(record)} days late).`);
+  } else {
+    Sound.stamp();
+    showMessage(`“${book.title}” returned. ${book.availableCopies} on shelf now.`);
+  }
 });
+
+
+/* ==========================================================================
+   THE LEDGER DESK · render fines + the waiting list
+   ========================================================================== */
+function renderLedgerDesk() {
+  const outstanding = totalOutstanding();
+  const waiting = new Set(queue.map((q) => q.bookId + "|" + q.studentId.toLowerCase())).size;
+
+  $("ledgerNote").textContent = outstanding
+    ? `₹${outstanding} outstanding across ${openAccounts().length} account${openAccounts().length === 1 ? "" : "s"} · ${waiting} reservation${waiting === 1 ? "" : "s"} queued`
+    : `Nothing owed · ${waiting} reservation${waiting === 1 ? "" : "s"} queued`;
+
+  /* ---- fines ---- */
+  const accounts = openAccounts();
+  const list = $("fineList");
+  $("fineEmpty").hidden = accounts.length > 0;
+
+  list.innerHTML = accounts.map((acct) => {
+    const items = acct.items
+      .map((i) => `<b>${escapeHTML(i.title)}</b> ${i.days}d late · ₹${i.amount}`)
+      .join(" &nbsp;·&nbsp; ");
+    const settled = settledFor(acct.studentId);
+    return `
+      <article class="fine-card">
+        <span class="fine-who">${escapeHTML(acct.studentId)}</span>
+        <span></span>
+        <span class="fine-amount">₹${acct.amount}<small>owing</small></span>
+        <p class="fine-detail">${items}${settled ? ` &nbsp;·&nbsp; ₹${settled} settled before` : ""}</p>
+        <div class="fine-actions">
+          <button class="mini-btn settle" type="button" data-settle="${escapeHTML(acct.studentId)}">Settle ₹${acct.amount}</button>
+          <button class="mini-btn" type="button" data-wave="${escapeHTML(acct.studentId)}">Waive as a kindness</button>
+        </div>
+      </article>`;
+  }).join("");
+
+  list.querySelectorAll("[data-settle]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.settle;
+      const acct = openAccounts().find((a) => a.studentId === id);
+      if (!acct) return;
+      fines.push({
+        studentId: id,
+        amount: acct.amount,
+        settledOn: todayISO(),
+        items: acct.items
+      });
+      // a settled account stops accruing: the overdue copies are cleared by
+      // resetting their due date to today (the copy is still out, but paid up)
+      issueRecords.forEach((r) => {
+        if (!r.returned && r.studentId === id && isOverdue(r)) r.renewedOn = todayISO(), r.dueOn = todayISO();
+      });
+      saveData();
+      Sound.stamp();
+      refreshAll();
+      renderLedgerDesk();
+      showMessage(`${id} settled ₹${acct.amount}. Receipt logged in the ledger.`);
+    });
+  });
+
+  list.querySelectorAll("[data-wave]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.wave;
+      const acct = openAccounts().find((a) => a.studentId === id);
+      if (!acct) return;
+      if (!confirm(`Waive ₹${acct.amount} for ${id}? This is recorded in the ledger.`)) return;
+      fines.push({ studentId: id, amount: 0, waived: acct.amount, settledOn: todayISO(), items: acct.items });
+      issueRecords.forEach((r) => {
+        if (!r.returned && r.studentId === id && isOverdue(r)) { r.renewedOn = todayISO(); r.dueOn = todayISO(); }
+      });
+      saveData();
+      Sound.tick();
+      refreshAll();
+      renderLedgerDesk();
+      showMessage(`₹${acct.amount} waived for ${id}. A generous library.`);
+    });
+  });
+
+  /* ---- waiting list ---- */
+  const qList = $("queueList");
+  const grouped = new Map();
+  queue.forEach((q) => {
+    if (!grouped.has(q.bookId)) grouped.set(q.bookId, []);
+    grouped.get(q.bookId).push(q);
+  });
+  $("queueEmpty").hidden = grouped.size > 0;
+
+  qList.innerHTML = [...grouped.entries()].map(([bookId, entries]) => {
+    const book = books[bookId];
+    const people = entries
+      .sort((a, b) => a.addedAt.localeCompare(b.addedAt))
+      .map((q, i) => `
+        <div class="queue-person ${i === 0 ? "next" : ""}">
+          <span class="q-pos">${i + 1}</span>
+          <span class="q-who">${escapeHTML(q.studentId)}</span>
+          <button class="q-drop" type="button" data-drop-book="${escapeHTML(bookId)}" data-drop-who="${escapeHTML(q.studentId)}" aria-label="Remove ${escapeHTML(q.studentId)} from the queue">×</button>
+          <span class="q-since">queued ${prettyDate(q.addedAt.slice(0, 10))}</span>
+        </div>
+        ${i === 0 ? `<p class="q-claim">First refusal on the next copy returned.</p>` : ""}`)
+      .join("");
+    return `
+      <div class="queue-book">
+        <div class="queue-title">
+          <h4>${escapeHTML(book ? book.title : bookId)}</h4>
+          <span class="q-code">${escapeHTML(bookId)}</span>
+        </div>
+        <div class="queue-people">${people}</div>
+      </div>`;
+  }).join("");
+
+  qList.querySelectorAll("[data-drop-book]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      removeFromQueue(btn.dataset.dropBook, btn.dataset.dropWho);
+      Sound.tick();
+      refreshAll();
+      renderLedgerDesk();
+      showMessage(`${btn.dataset.dropWho} removed from the queue.`);
+    });
+  });
+
+  /* ---- add-to-queue form ---- */
+  const bookOpts = Object.values(books)
+    .map((b) => `<option value="${escapeHTML(b.id)}">${escapeHTML(b.title)} — ${escapeHTML(b.id)}${b.availableCopies === 0 ? " (all out)" : ""}</option>`)
+    .join("");
+  qList.insertAdjacentHTML("beforeend", `
+    <form class="queue-add" id="queueForm" novalidate>
+      <select id="queueBook" aria-label="Book to reserve">${bookOpts || '<option value="">No books yet</option>'}</select>
+      <input id="queueWho" placeholder="Borrower ID" aria-label="Borrower ID" autocomplete="off">
+      <button type="submit">Reserve</button>
+    </form>
+    <p class="q-breadcrumb">Reservations are held in this browser — the first in line is offered the copy on return.</p>`);
+
+  $("queueForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const res = addToQueue($("queueBook").value, readText($("queueWho").value));
+    if (!res.ok) { Sound.error(); showMessage(res.msg, true); return; }
+    Sound.tick();
+    refreshAll();
+    renderLedgerDesk();
+    showMessage(res.msg);
+  });
+}
 
 /* ==========================================================================
    ON LOAN BOARD
@@ -2688,6 +3952,7 @@ function displayIssuedBooks() {
           <div><dt>Borrower</dt><dd>${escapeHTML(r.studentId)}</dd></div>
           <div><dt>Issued</dt><dd>${r.issuedOn ? prettyDate(r.issuedOn) : "—"}</dd></div>
           <div><dt>Due</dt><dd class="${overdue ? "over" : ""}">${due}${overdue && days !== null ? ` · ${Math.abs(days)}d late` : ""}</dd></div>
+          ${overdue ? `<div><dt>Fine</dt><dd class="over">₹${fineFor(r)} <span style="font-weight:400;font-size:10.5px">(${daysLate(r)}d × ₹${fineRate})</span></dd></div>` : ""}
         </dl>
         <div class="loan-actions">
           <button class="mini-btn" type="button" data-return-book="${escapeHTML(r.bookId)}" data-return-student="${escapeHTML(r.studentId)}">Return</button>
@@ -2715,6 +3980,7 @@ function displayIssuedBooks() {
       showSection("dashboard");
       renderShelf();
       renderSlip();
+      openBook(btn.dataset.openBook);
     });
   });
 }
@@ -2791,7 +4057,7 @@ function openBookFromPalette(index) {
   showSection("dashboard");
   renderShelf();
   renderSlip();
-  showMessage(`Card pulled for ${book.id}.`);
+  openBook(book.id);
 }
 
 $("paletteBtn").addEventListener("click", openPalette);
@@ -2831,6 +4097,65 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+
+/* ==========================================================================
+   LAMPS · after-hours theme
+   ========================================================================== */
+function applyTheme(theme, announce = false) {
+  const night = theme === "night";
+  document.documentElement.setAttribute("data-theme", night ? "night" : "day");
+  localStorage.setItem(STORE_THEME, night ? "night" : "day");
+  const btn = $("themeBtn");
+  if (btn) {
+    btn.setAttribute("aria-pressed", String(night));
+    btn.setAttribute("aria-label", night ? "Switch to daytime lighting" : "Switch to after-hours lighting");
+    btn.title = night ? "Bring the daylight back" : "Dim the lamps";
+    $("themeLabel").textContent = night ? "Lamps down" : "Lamps up";
+  }
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", night ? "#171510" : "#1d3b2f");
+  if (announce) showMessage(night ? "The lamps are down. After-hours mode." : "Daylight restored.");
+}
+
+function initTheme() {
+  const saved = localStorage.getItem(STORE_THEME);
+  const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  applyTheme(saved || (prefersDark ? "night" : "day"));
+  $("themeBtn").addEventListener("click", () => {
+    const night = document.documentElement.getAttribute("data-theme") === "night";
+    Sound.tick();
+    applyTheme(night ? "day" : "night", true);
+  });
+}
+
+/* ==========================================================================
+   SOUND TOGGLE + first-gesture wake
+   ========================================================================== */
+syncSoundButton();
+document.addEventListener("DOMContentLoaded", () => {});
+
+$("fineRate").addEventListener("change", () => {
+  const v = Math.max(0, Math.min(100, Number($("fineRate").value) || 0));
+  fineRate = v;
+  $("fineRate").value = v;
+  saveData();
+  Sound.tick();
+  refreshAll();
+  renderLedgerDesk();
+  showMessage(`Fines are now ₹${v} per day, per copy.`);
+});
+
+$("soundBtn").addEventListener("click", () => {
+  const on = Sound.toggle();
+  syncSoundButton();
+  if (on) Sound.tick();
+  showMessage(on ? "Interface sound on." : "Interface sound muted.");
+});
+
+["pointerdown", "keydown"].forEach((evt) => {
+  window.addEventListener(evt, () => Sound.wake(), { once: true });
+});
+
 /* ==========================================================================
    CLOCK
    ========================================================================== */
@@ -2847,8 +4172,11 @@ $("exportBtn").addEventListener("click", () => {
   const payload = {
     library: "The Reading Room",
     exportedAt: new Date().toISOString(),
+    fineRate,
     books,
-    issueRecords
+    issueRecords,
+    fines,
+    queue
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -2866,9 +4194,13 @@ $("resetBtn").addEventListener("click", () => {
   if (!confirm("Close the library? This erases every book and loan stored in this browser.")) return;
   books = {};
   issueRecords = [];
+  fines = [];
+  queue = [];
   selectedBookId = null;
   localStorage.removeItem(STORE_BOOKS);
   localStorage.removeItem(STORE_ISSUES);
+  localStorage.removeItem(STORE_FINES);
+  localStorage.removeItem(STORE_QUEUE);
   localStorage.setItem(STORE_SEEDED, "1");
   saveData();
   refreshAll();
@@ -2923,9 +4255,12 @@ function refreshAll() {
   renderAuthorChips();
   updateCoverPreview();
   updateClock();
+  if (currentSection === "ledgerdesk") renderLedgerDesk();
 }
 
 seedSampleLibrary();
+$("fineRate").value = fineRate;
+initTheme();
 refreshAll();
 setInterval(updateClock, 60000);
 
