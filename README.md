@@ -40,7 +40,8 @@ Built with plain **HTML, CSS and JavaScript** — no frameworks, no build step, 
 - **Borrower's slip** — click any spine to pull its card: status, borrowers, due dates, quicker return
 - **3D cover preview** — the Add Book form binds a live hardcover as you type
 - **Quick search palette** — `Ctrl/⌘ + K` (or `/`); Enter opens the book itself
-- **Export ledger** — download the whole library as JSON
+- **Export ledger** — download the whole library as JSON (from the ledger desk)
+- **IEM crest in the footer** — the Institute of Engineering & Management mark, set in a paper plate, with **Created by Poushani Chowdhury** beside it
 - **Responsive everywhere** — iPhone SE → iPad Pro → desktop; the table becomes cards on phones, the shelf becomes a swipeable strip, the opened book flips to a vertical spread on phones, inputs stay at 16 px so iOS never zooms
 
 ## 🚀 Run it
@@ -65,6 +66,7 @@ library/
   script.js                # app logic: state, rendering, validation
   reading-room.html        # same as the root single-file build
   assets/covers/opt/*.webp # 8 cloth/leather binding textures
+  assets/brand/iem-logo.png # IEM crest shown in the footer
 ```
 
 ## 🗂️ Data model
@@ -77,7 +79,7 @@ library/
 [{ bookId, studentId, returned, issuedOn, dueOn, returnedOn? }]
 ```
 
-Eight sample books are seeded on first visit so the shelf isn't empty. Use **Close the library** in the footer to wipe it and start fresh.
+Nine sample books are seeded on first visit so the shelf isn't empty. Use **Close the library** at the ledger desk (*Ledger* tab) to wipe it and start fresh — **Export the ledger** sits right beside it.
 
 ## 🌐 Deploy on GitHub Pages
 
@@ -87,6 +89,11 @@ Eight sample books are seeded on first visit so the shelf isn't empty. Use **Clo
 4. Your site appears at `https://<username>.github.io/<repo>/`
 
 Because it's a static site with no build step, Pages serves it as-is.
+
+## 👩‍🎓 Credits
+
+**Created by Poushani Chowdhury** — Department project, 2026.
+The IEM crest in the footer belongs to the **Institute of Engineering & Management**.
 
 ## 📄 License
 

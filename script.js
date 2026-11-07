@@ -14,12 +14,31 @@ const STORE_QUEUE = "readingRoomQueue";
 const STORE_RATE = "readingRoomFineRate";
 const STORE_THEME = "readingRoomTheme";
 
+/* Storage can be blocked (private windows, locked-down browsers, some preview
+   frames). Fall back to an in-memory store so the app still runs for the visit —
+   nothing is written to the device, everything else behaves identically. */
+const Store = (() => {
+  try {
+    const probe = "__readingRoomProbe__";
+    window.localStorage.setItem(probe, "1");
+    window.localStorage.removeItem(probe);
+    return window.localStorage;
+  } catch (err) {
+    const memory = new Map();
+    return {
+      getItem: (k) => (memory.has(k) ? memory.get(k) : null),
+      setItem: (k, v) => { memory.set(k, String(v)); },
+      removeItem: (k) => { memory.delete(k); }
+    };
+  }
+})();
+
 /* ---------- data ---------- */
-let books = JSON.parse(localStorage.getItem(STORE_BOOKS) || "{}");
-let issueRecords = JSON.parse(localStorage.getItem(STORE_ISSUES) || "[]");
-let fines = JSON.parse(localStorage.getItem(STORE_FINES) || "[]");   // settled accounts
-let queue = JSON.parse(localStorage.getItem(STORE_QUEUE) || "[]");   // reservations
-let fineRate = Number(localStorage.getItem(STORE_RATE) || 2);        // ₹ per day, per copy
+let books = JSON.parse(Store.getItem(STORE_BOOKS) || "{}");
+let issueRecords = JSON.parse(Store.getItem(STORE_ISSUES) || "[]");
+let fines = JSON.parse(Store.getItem(STORE_FINES) || "[]");   // settled accounts
+let queue = JSON.parse(Store.getItem(STORE_QUEUE) || "[]");   // reservations
+let fineRate = Number(Store.getItem(STORE_RATE) || 2);        // ₹ per day, per copy
 
 let selectedBookId = null;
 let currentSection = "dashboard";
@@ -28,11 +47,11 @@ const $ = (id) => document.getElementById(id);
 
 /* ---------- helpers ---------- */
 function saveData() {
-  localStorage.setItem(STORE_BOOKS, JSON.stringify(books));
-  localStorage.setItem(STORE_ISSUES, JSON.stringify(issueRecords));
-  localStorage.setItem(STORE_FINES, JSON.stringify(fines));
-  localStorage.setItem(STORE_QUEUE, JSON.stringify(queue));
-  localStorage.setItem(STORE_RATE, String(fineRate));
+  Store.setItem(STORE_BOOKS, JSON.stringify(books));
+  Store.setItem(STORE_ISSUES, JSON.stringify(issueRecords));
+  Store.setItem(STORE_FINES, JSON.stringify(fines));
+  Store.setItem(STORE_QUEUE, JSON.stringify(queue));
+  Store.setItem(STORE_RATE, String(fineRate));
 }
 
 function escapeHTML(value) {
@@ -199,6 +218,13 @@ const ASSET_BASE = (() => {
   return url.href.slice(0, url.href.lastIndexOf("/") + 1);
 })();
 
+/* the IEM crest: bundled as a data URI in the single-file build */
+const BRAND_ART = null; // replaced by build.js when bundling
+const brandArt = (file) =>
+  BRAND_ART && BRAND_ART[file]
+    ? BRAND_ART[file]
+    : `${ASSET_BASE}assets/brand/${file}`;
+
 const coverArt = (key) =>
   COVER_ART
     ? `url("${COVER_ART[key] || COVER_ART.forest}")`
@@ -211,7 +237,7 @@ const coverArt = (key) =>
    ========================================================================== */
 const Sound = (() => {
   const KEY = "readingRoomSound";
-  let enabled = localStorage.getItem(KEY) !== "off";
+  let enabled = Store.getItem(KEY) !== "off";
   let ctx = null;
   let noiseBuf = null;
 
@@ -260,7 +286,7 @@ const Sound = (() => {
     get enabled() { return enabled; },
     toggle() {
       enabled = !enabled;
-      localStorage.setItem(KEY, enabled ? "on" : "off");
+      Store.setItem(KEY, enabled ? "on" : "off");
       if (enabled) this.tick();
       return enabled;
     },
@@ -338,8 +364,10 @@ function showSection(sectionId) {
   const strip = document.querySelector(".tabs-inner");
   const activeTab = document.querySelector(`.tab[data-section="${sectionId}"]`);
   if (strip && activeTab) {
-    const target = activeTab.offsetLeft - (strip.clientWidth - activeTab.offsetWidth) / 2;
-    strip.scrollTo({ left: Math.max(0, target), behavior: "smooth" });
+    const target = Math.max(0, activeTab.offsetLeft - (strip.clientWidth - activeTab.offsetWidth) / 2);
+    // Element.scrollTo is missing on some old WebKit builds and in test DOMs
+    if (typeof strip.scrollTo === "function") strip.scrollTo({ left: target, behavior: "smooth" });
+    else strip.scrollLeft = target;
   }
   showMessage("");
 
@@ -1293,7 +1321,14 @@ function renderLedgerDesk() {
       <input id="queueWho" placeholder="Borrower ID" aria-label="Borrower ID" autocomplete="off">
       <button type="submit">Reserve</button>
     </form>
-    <p class="q-breadcrumb">Reservations are held in this browser — the first in line is offered the copy on return.</p>`);
+    <p class="q-breadcrumb">Reservations are held in this browser — the first in line is offered the copy on return.</p>
+    <div class="desk-tools">
+      <button class="mini-btn" type="button" id="deskExport">Export the ledger</button>
+      <button class="mini-btn danger" type="button" id="deskReset">Close the library</button>
+    </div>`);
+
+  $("deskExport").addEventListener("click", exportLedger);
+  $("deskReset").addEventListener("click", closeLibrary);
 
   $("queueForm").addEventListener("submit", (e) => {
     e.preventDefault();
@@ -1508,7 +1543,7 @@ document.addEventListener("keydown", (e) => {
 function applyTheme(theme, announce = false) {
   const night = theme === "night";
   document.documentElement.setAttribute("data-theme", night ? "night" : "day");
-  localStorage.setItem(STORE_THEME, night ? "night" : "day");
+  Store.setItem(STORE_THEME, night ? "night" : "day");
   const btn = $("themeBtn");
   if (btn) {
     btn.setAttribute("aria-pressed", String(night));
@@ -1522,7 +1557,7 @@ function applyTheme(theme, announce = false) {
 }
 
 function initTheme() {
-  const saved = localStorage.getItem(STORE_THEME);
+  const saved = Store.getItem(STORE_THEME);
   const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
   applyTheme(saved || (prefersDark ? "night" : "day"));
   $("themeBtn").addEventListener("click", () => {
@@ -1572,7 +1607,7 @@ function updateClock() {
 /* ==========================================================================
    FOOTER ACTIONS
    ========================================================================== */
-$("exportBtn").addEventListener("click", () => {
+function exportLedger() {
   const payload = {
     library: "The Reading Room",
     exportedAt: new Date().toISOString(),
@@ -1592,31 +1627,31 @@ $("exportBtn").addEventListener("click", () => {
   a.remove();
   URL.revokeObjectURL(url);
   showMessage("Ledger exported as JSON.");
-});
+}
 
-$("resetBtn").addEventListener("click", () => {
+function closeLibrary() {
   if (!confirm("Close the library? This erases every book and loan stored in this browser.")) return;
   books = {};
   issueRecords = [];
   fines = [];
   queue = [];
   selectedBookId = null;
-  localStorage.removeItem(STORE_BOOKS);
-  localStorage.removeItem(STORE_ISSUES);
-  localStorage.removeItem(STORE_FINES);
-  localStorage.removeItem(STORE_QUEUE);
-  localStorage.setItem(STORE_SEEDED, "1");
+  Store.removeItem(STORE_BOOKS);
+  Store.removeItem(STORE_ISSUES);
+  Store.removeItem(STORE_FINES);
+  Store.removeItem(STORE_QUEUE);
+  Store.setItem(STORE_SEEDED, "1");
   saveData();
   refreshAll();
   showMessage("The library is closed. Start a new collection whenever you're ready.");
-});
+}
 
 /* ==========================================================================
    SAMPLE SHELF (first visit only)
    ========================================================================== */
 function seedSampleLibrary() {
-  if (localStorage.getItem(STORE_SEEDED)) return;
-  localStorage.setItem(STORE_SEEDED, "1");
+  if (Store.getItem(STORE_SEEDED)) return;
+  Store.setItem(STORE_SEEDED, "1");
 
   if (Object.keys(books).length > 0) return;
 
@@ -1661,6 +1696,8 @@ function refreshAll() {
   updateClock();
   if (currentSection === "ledgerdesk") renderLedgerDesk();
 }
+
+$("iemLogo").src = brandArt("iem-logo.png");
 
 seedSampleLibrary();
 $("fineRate").value = fineRate;
